@@ -1,4 +1,4 @@
-use cosmwasm_std::{Binary, Timestamp};
+use cosmwasm_std::{Binary, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
 use serde::{Deserialize, Serialize};
 
@@ -70,11 +70,11 @@ impl Severity {
 
     /// `default_stake` returns the reputation amount staked when filing a
     /// finding of this severity.
-    pub fn default_stake(&self) -> u128 {
+    pub fn default_stake(&self) -> Uint128 {
         match self {
-            Severity::Critical => 8,
-            Severity::Warning => 4,
-            Severity::Suggestion => 2,
+            Severity::Critical => Uint128::new(8),
+            Severity::Warning => Uint128::new(4),
+            Severity::Suggestion => Uint128::new(2),
         }
     }
 }
@@ -113,7 +113,7 @@ pub struct AgentRecord {
     /// Role; determines whether this agent can resolve findings.
     pub role: Role,
     /// Current reputation balance. Floored at zero by the slash path.
-    pub balance: u128,
+    pub balance: Uint128,
     /// Lifetime true-positive count.
     pub tp_count: u64,
     /// Lifetime false-positive count.
@@ -138,21 +138,24 @@ pub struct FindingState {
     pub agent_pubkey: Binary,
     pub severity: Severity,
     pub claim_hash: String,
-    pub stake: u128,
+    pub stake: Uint128,
     pub committed_at: Timestamp,
     pub resolution: Option<ResolutionRecord>,
 }
 
-/// `ResolutionRecord` is the on-chain settlement of one finding.
+/// `ResolutionRecord` is the on-chain settlement of one finding. Split
+/// into `stake_returned` + `reward` so off-chain consumers can distinguish
+/// stake-return from outcome-reward without re-deriving from severity.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ResolutionRecord {
     pub outcome: Outcome,
     pub resolver_pubkey: Binary,
     pub evidence_hash: String,
     pub resolved_at: Timestamp,
-    /// Reward applied to the filing agent's balance at resolution time
-    /// (can be zero for FP / Stale / Indeterminate).
-    pub reward_applied: u128,
+    /// Stake returned to the filing agent's balance.
+    pub stake_returned: Uint128,
+    /// Additional reward (TP only). Zero on FP / Stale / Indeterminate.
+    pub reward: Uint128,
 }
 
 /// `Config` is the contract-level configuration set at instantiation.
@@ -162,24 +165,26 @@ pub struct Config {
     /// the deployer; can be transferred via a future ExecuteMsg::UpdateAdmin.
     pub admin: cosmwasm_std::Addr,
     /// Default initial reputation balance for newly registered agents.
-    pub initial_balance: u128,
+    pub initial_balance: Uint128,
     /// Balance new (post-rotation) agents inherit; lower than initial so
     /// rotation is not a free top-up.
-    pub rotation_floor: u128,
+    pub rotation_floor: Uint128,
     /// Reward multiplier on true positives. E.g. 2 means a TP returns the
     /// stake plus 2× the stake as additional reputation.
-    pub outcome_reward_multiplier: u128,
+    pub outcome_reward_multiplier: Uint128,
 }
 
 /// Storage maps + items used by the contract.
-
+///
 /// Contract configuration.
 pub const CONFIG: Item<Config> = Item::new("config");
 
 /// AgentRecord keyed by raw pubkey bytes (32-byte ed25519).
 pub const AGENTS: Map<&[u8], AgentRecord> = Map::new("agents");
 
-/// Label → pubkey mapping for human-friendly lookup.
+/// Label → pubkey mapping for human-friendly lookup. Removed on rotation
+/// (the predecessor's accountability trail lives in the `AGENTS` record
+/// via `retired_at` + `superseded_by`).
 pub const AGENTS_BY_LABEL: Map<&str, Binary> = Map::new("agents_by_label");
 
 /// FindingState keyed by (plan_id, finding_id).

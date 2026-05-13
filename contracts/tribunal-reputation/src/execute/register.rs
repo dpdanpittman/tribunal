@@ -1,9 +1,8 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Binary};
+use cosmwasm_std::{Binary, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
-use crate::state::{
-    AgentRecord, Role, AGENTS, AGENTS_BY_LABEL, CONFIG,
-};
+use crate::state::{AgentRecord, Role, AGENTS, AGENTS_BY_LABEL, CONFIG};
+use crate::validate::{validate_id_field, MAX_LABEL_LEN, MAX_MODEL_ID_LEN};
 
 const PUBKEY_LEN: usize = 32;
 
@@ -23,11 +22,13 @@ pub fn register_agent(
     label: String,
     model_id: String,
     role: String,
-    initial_balance: Option<u128>,
+    initial_balance: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     if pubkey.len() != PUBKEY_LEN {
         return Err(ContractError::InvalidPubkeyLength(pubkey.len()));
     }
+    validate_id_field("label", &label, MAX_LABEL_LEN)?;
+    validate_id_field("model_id", &model_id, MAX_MODEL_ID_LEN)?;
     let role = Role::from_str(&role).ok_or(ContractError::InvalidRole(role.clone()))?;
 
     if AGENTS.has(deps.storage, pubkey.as_slice()) {
@@ -39,7 +40,7 @@ pub fn register_agent(
 
     let cfg = CONFIG.load(deps.storage)?;
     let balance = match initial_balance {
-        Some(b) if b == 0 => return Err(ContractError::InvalidInitialBalance),
+        Some(b) if b.is_zero() => return Err(ContractError::InvalidInitialBalance),
         Some(b) => b,
         None => cfg.initial_balance,
     };

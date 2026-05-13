@@ -6,13 +6,25 @@ import (
 	"fmt"
 )
 
+// Wire-format notes for everything in this file:
+//   - `Uint128` (balance, stake, reward, etc.) serializes as a decimal
+//     STRING. Use Go `string`.
+//   - `Binary` (pubkey, signature) serializes as standard base64. Use Go
+//     `string` and convert with `DecodePubkeyBinary` for display.
+//   - `Timestamp` (created_at, retired_at, committed_at, resolved_at)
+//     serializes as a decimal STRING of nanoseconds since the unix epoch.
+//     Use Go `string`.
+//   - `u64` counters (tp_count, fp_count) serialize as JSON numbers; Go
+//     `uint64`.
+
 // ReputationResp mirrors src/msg.rs::ReputationResp.
 type ReputationResp struct {
 	Pubkey  string  `json:"pubkey"`
 	Label   *string `json:"label,omitempty"`
 	Balance string  `json:"balance"`
-	TPCount uint32  `json:"tp_count"`
-	FPCount uint32  `json:"fp_count"`
+	TPCount uint64  `json:"tp_count"`
+	FPCount uint64  `json:"fp_count"`
+	Retired bool    `json:"retired"`
 }
 
 // AgentRecord mirrors src/state.rs::AgentRecord on the query side.
@@ -21,10 +33,10 @@ type AgentRecord struct {
 	ModelID      string  `json:"model_id"`
 	Role         string  `json:"role"`
 	Balance      string  `json:"balance"`
-	TPCount      uint32  `json:"tp_count"`
-	FPCount      uint32  `json:"fp_count"`
-	CreatedAt    uint64  `json:"created_at"`
-	RetiredAt    *uint64 `json:"retired_at,omitempty"`
+	TPCount      uint64  `json:"tp_count"`
+	FPCount      uint64  `json:"fp_count"`
+	CreatedAt    string  `json:"created_at"`
+	RetiredAt    *string `json:"retired_at,omitempty"`
 	SupersededBy *string `json:"superseded_by,omitempty"`
 	RotatedFrom  *string `json:"rotated_from,omitempty"`
 }
@@ -43,16 +55,19 @@ type FindingState struct {
 	Severity    string            `json:"severity"`
 	ClaimHash   string            `json:"claim_hash"`
 	Stake       string            `json:"stake"`
-	CommittedAt uint64            `json:"committed_at"`
+	CommittedAt string            `json:"committed_at"`
 	Resolution  *ResolutionRecord `json:"resolution,omitempty"`
 }
 
-// ResolutionRecord mirrors src/state.rs::ResolutionRecord.
+// ResolutionRecord mirrors src/state.rs::ResolutionRecord. Split into
+// `stake_returned` + `reward` so a TP outcome's two arithmetic
+// components are recoverable without the consumer re-deriving from
+// severity + contract config.
 type ResolutionRecord struct {
 	Outcome        string `json:"outcome"`
 	ResolverPubkey string `json:"resolver_pubkey"`
 	EvidenceHash   string `json:"evidence_hash"`
-	ResolvedAt     uint64 `json:"resolved_at"`
+	ResolvedAt     string `json:"resolved_at"`
 	StakeReturned  string `json:"stake_returned"`
 	Reward         string `json:"reward"`
 }
@@ -68,8 +83,8 @@ type LeaderboardEntry struct {
 	Label   string `json:"label"`
 	Role    string `json:"role"`
 	Balance string `json:"balance"`
-	TPCount uint32 `json:"tp_count"`
-	FPCount uint32 `json:"fp_count"`
+	TPCount uint64 `json:"tp_count"`
+	FPCount uint64 `json:"fp_count"`
 }
 
 // LeaderboardResp mirrors src/msg.rs::LeaderboardResp.

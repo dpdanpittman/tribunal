@@ -1,7 +1,7 @@
 //! Integration tests for tribunal-reputation. Exercises every execute /
 //! query path end-to-end against a cw-multi-test app.
 
-use cosmwasm_std::{Addr, Binary};
+use cosmwasm_std::{Addr, Binary, Uint128};
 use cw_multi_test::{App, AppBuilder, ContractWrapper, Executor};
 
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey, SECRET_KEY_LENGTH};
@@ -54,9 +54,9 @@ fn setup() -> (App, Addr) {
             admin.clone(),
             &InstantiateMsg {
                 admin: None,
-                initial_balance: Some(100),
-                rotation_floor: Some(10),
-                outcome_reward_multiplier: Some(2),
+                initial_balance: Some(Uint128::new(100)),
+                rotation_floor: Some(Uint128::new(10)),
+                outcome_reward_multiplier: Some(Uint128::new(2)),
             },
             &[],
             "tribunal-reputation",
@@ -81,7 +81,13 @@ fn register(app: &mut App, contract: &Addr, label: &str, role: &str, seed: u8) -
     kp
 }
 
-fn canonical_finding(plan_id: &str, finding_id: &str, severity: &str, claim_hash: &str, stake: u128) -> Vec<u8> {
+fn canonical_finding(
+    plan_id: &str,
+    finding_id: &str,
+    severity: &str,
+    claim_hash: &str,
+    stake: u128,
+) -> Vec<u8> {
     format!(
         "TRIBUNAL_FINDING|{}|{}|{}|{}|{}",
         plan_id, finding_id, severity, claim_hash, stake
@@ -104,9 +110,9 @@ fn instantiate_records_config() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Config {})
         .unwrap();
-    assert_eq!(cfg.initial_balance, 100);
-    assert_eq!(cfg.rotation_floor, 10);
-    assert_eq!(cfg.outcome_reward_multiplier, 2);
+    assert_eq!(cfg.initial_balance, Uint128::new(100));
+    assert_eq!(cfg.rotation_floor, Uint128::new(10));
+    assert_eq!(cfg.outcome_reward_multiplier, Uint128::new(2));
 }
 
 #[test]
@@ -118,7 +124,7 @@ fn register_agent_happy_path() {
         .query_wasm_smart(&contract, &QueryMsg::Agent { pubkey: kp.pubkey })
         .unwrap();
     assert_eq!(resp.agent.label, "alice");
-    assert_eq!(resp.agent.balance, 100);
+    assert_eq!(resp.agent.balance, Uint128::new(100));
     assert!(resp.agent.retired_at.is_none());
 }
 
@@ -204,7 +210,7 @@ fn commit_finding_happy_path_deducts_stake() {
         agent_pubkey: kp.pubkey.clone(),
         severity: severity.into(),
         claim_hash: claim_hash.into(),
-        stake,
+        stake: stake.into(),
         signature: sig,
     });
     app.execute_contract(Addr::unchecked(ADMIN), contract.clone(), &msg, &[])
@@ -214,7 +220,7 @@ fn commit_finding_happy_path_deducts_stake() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: kp.pubkey })
         .unwrap();
-    assert_eq!(rep.balance, 100 - 8);
+    assert_eq!(rep.balance, Uint128::new(100 - 8));
 }
 
 #[test]
@@ -237,7 +243,7 @@ fn commit_finding_rejects_bad_signature() {
         agent_pubkey: kp.pubkey.clone(),
         severity: severity.into(),
         claim_hash: claim_hash.into(),
-        stake,
+        stake: stake.into(),
         signature: bad_sig,
     });
     let err = app
@@ -263,7 +269,7 @@ fn commit_finding_rejects_duplicate() {
         agent_pubkey: kp.pubkey.clone(),
         severity: severity.into(),
         claim_hash: claim_hash.into(),
-        stake,
+        stake: stake.into(),
         signature: sig,
     };
     app.execute_contract(
@@ -306,7 +312,7 @@ fn resolve_true_positive_returns_stake_plus_reward() {
             agent_pubkey: adv.pubkey.clone(),
             severity: severity.into(),
             claim_hash: claim_hash.into(),
-            stake,
+            stake: stake.into(),
             signature: sig,
         }),
         &[],
@@ -337,7 +343,7 @@ fn resolve_true_positive_returns_stake_plus_reward() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: adv.pubkey })
         .unwrap();
-    assert_eq!(rep.balance, 116);
+    assert_eq!(rep.balance, Uint128::new(116));
     assert_eq!(rep.tp_count, 1);
     assert_eq!(rep.fp_count, 0);
 }
@@ -363,7 +369,7 @@ fn resolve_false_positive_slashes_stake() {
             agent_pubkey: adv.pubkey.clone(),
             severity: severity.into(),
             claim_hash: claim_hash.into(),
-            stake,
+            stake: stake.into(),
             signature: sig,
         }),
         &[],
@@ -393,7 +399,7 @@ fn resolve_false_positive_slashes_stake() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: adv.pubkey })
         .unwrap();
-    assert_eq!(rep.balance, 96);
+    assert_eq!(rep.balance, Uint128::new(96));
     assert_eq!(rep.fp_count, 1);
 }
 
@@ -418,7 +424,7 @@ fn unauthorized_resolver_rejected() {
             agent_pubkey: adv.pubkey.clone(),
             severity: severity.into(),
             claim_hash: claim_hash.into(),
-            stake,
+            stake: stake.into(),
             signature: sig,
         }),
         &[],
@@ -467,7 +473,7 @@ fn batch_commit_and_resolve_per_plan() {
             agent_pubkey: adv.pubkey.clone(),
             severity: severity.into(),
             claim_hash: claim_hash.into(),
-            stake,
+            stake: stake.into(),
             signature: sig,
         });
     }
@@ -487,7 +493,7 @@ fn batch_commit_and_resolve_per_plan() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: adv.pubkey.clone() })
         .unwrap();
-    assert_eq!(rep.balance, 88);
+    assert_eq!(rep.balance, Uint128::new(88));
 
     // Resolve all three as TP.
     let outcome = "true_positive";
@@ -520,7 +526,7 @@ fn batch_commit_and_resolve_per_plan() {
         .wrap()
         .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: adv.pubkey })
         .unwrap();
-    assert_eq!(rep.balance, 124);
+    assert_eq!(rep.balance, Uint128::new(124));
     assert_eq!(rep.tp_count, 3);
 }
 
@@ -543,7 +549,7 @@ fn rotate_preserves_history_and_resets_balance() {
             agent_pubkey: old_kp.pubkey.clone(),
             severity: severity.into(),
             claim_hash: "h".into(),
-            stake: 8,
+            stake: Uint128::new(8),
             signature: sig,
         }),
         &[],
@@ -593,7 +599,7 @@ fn rotate_preserves_history_and_resets_balance() {
         .query_wasm_smart(&contract, &QueryMsg::Agent { pubkey: new_kp.pubkey })
         .unwrap();
     // New balance is rotation_floor (10). TP history carried over (1).
-    assert_eq!(new_resp.agent.balance, 10);
+    assert_eq!(new_resp.agent.balance, Uint128::new(10));
     assert_eq!(new_resp.agent.tp_count, 1);
     assert!(new_resp.agent.rotated_from.is_some());
 }
@@ -618,7 +624,7 @@ fn leaderboard_orders_by_balance_descending() {
                 agent_pubkey: kp.pubkey.clone(),
                 severity: severity.into(),
                 claim_hash: "h".into(),
-                stake,
+                stake: stake.into(),
                 signature: sig,
             }),
             &[],
@@ -660,11 +666,11 @@ fn leaderboard_orders_by_balance_descending() {
     // low:  100 - 4 = 96
     assert_eq!(lb.entries.len(), 3);
     assert_eq!(lb.entries[0].label, "high");
-    assert_eq!(lb.entries[0].balance, 116);
+    assert_eq!(lb.entries[0].balance, Uint128::new(116));
     assert_eq!(lb.entries[1].label, "mid");
-    assert_eq!(lb.entries[1].balance, 100);
+    assert_eq!(lb.entries[1].balance, Uint128::new(100));
     assert_eq!(lb.entries[2].label, "low");
-    assert_eq!(lb.entries[2].balance, 96);
+    assert_eq!(lb.entries[2].balance, Uint128::new(96));
 }
 
 #[test]
@@ -685,7 +691,7 @@ fn finding_query_returns_committed_state() {
             agent_pubkey: kp.pubkey,
             severity: severity.into(),
             claim_hash: "h".into(),
-            stake,
+            stake: stake.into(),
             signature: sig,
         }),
         &[],
@@ -704,6 +710,6 @@ fn finding_query_returns_committed_state() {
         .unwrap();
     assert!(resp.finding.is_some());
     let f = resp.finding.unwrap();
-    assert_eq!(f.stake, stake);
+    assert_eq!(f.stake, Uint128::new(stake));
     assert!(f.resolution.is_none());
 }

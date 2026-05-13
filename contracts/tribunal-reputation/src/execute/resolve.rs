@@ -1,9 +1,10 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
 use crate::msg::ResolutionCommit;
-use crate::state::{
-    AgentRecord, Outcome, ResolutionRecord, AGENTS, CONFIG, FINDINGS,
+use crate::state::{AgentRecord, Outcome, ResolutionRecord, AGENTS, CONFIG, FINDINGS};
+use crate::validate::{
+    validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN,
 };
 
 /// `resolve_finding` settles a single finding. Returns / slashes stake +
@@ -27,14 +28,14 @@ pub fn resolve_finding_batch(
     plan_id: String,
     resolutions: Vec<ResolutionCommit>,
 ) -> Result<Response, ContractError> {
-    if resolutions.is_empty() {
-        return Err(ContractError::EmptyBatch);
-    }
+    validate_batch_size(resolutions.len())?;
+    validate_id_field("plan_id", &plan_id, MAX_ID_LEN)?;
     let count = resolutions.len();
     for r in resolutions {
         if r.plan_id != plan_id {
-            return Err(ContractError::FindingNotCommitted {
-                plan_id: r.plan_id,
+            return Err(ContractError::BatchMixedPlanID {
+                batch_plan_id: plan_id.clone(),
+                found_plan_id: r.plan_id,
                 finding_id: r.finding_id,
             });
         }
@@ -51,6 +52,10 @@ fn process_resolution(
     env: Env,
     r: ResolutionCommit,
 ) -> Result<(), ContractError> {
+    validate_id_field("plan_id", &r.plan_id, MAX_ID_LEN)?;
+    validate_id_field("finding_id", &r.finding_id, MAX_ID_LEN)?;
+    validate_id_field("evidence_hash", &r.evidence_hash, MAX_HASH_LEN)?;
+
     // Resolver must be a registered, active agent with a resolver role.
     let resolver: AgentRecord = AGENTS
         .may_load(deps.storage, r.resolver_pubkey.as_slice())?
@@ -62,17 +67,12 @@ fn process_resolution(
         return Err(ContractError::UnauthorizedResolver);
     }
 
-    let outcome = Outcome::from_str(&r.outcome).ok_or_else(|| {
-        ContractError::InvalidOutcome(r.outcome.clone())
-    })?;
+    let outcome = Outcome::from_str(&r.outcome)
+        .ok_or_else(|| ContractError::InvalidOutcome(r.outcome.clone()))?;
 
     // Verify resolver's signature over the canonical message.
-    let canonical = canonical_resolution_message(
-        &r.plan_id,
-        &r.finding_id,
-        &r.outcome,
-        &r.evidence_hash,
-    );
+    let canonical =
+        canonical_resolution_message(&r.plan_id, &r.finding_id, &r.outcome, &r.evidence_hash);
     let verified = deps
         .api
         .ed25519_verify(&canonical, r.signature.as_slice(), r.resolver_pubkey.as_slice())
@@ -83,12 +83,13 @@ fn process_resolution(
 
     // Load the finding being resolved.
     let key = (r.plan_id.as_str(), r.finding_id.as_str());
-    let mut state = FINDINGS
-        .may_load(deps.storage, key)?
-        .ok_or_else(|| ContractError::FindingNotCommitted {
-            plan_id: r.plan_id.clone(),
-            finding_id: r.finding_id.clone(),
-        })?;
+    let mut state =
+        FINDINGS
+            .may_load(deps.storage, key)?
+            .ok_or_else(|| ContractError::FindingNotCommitted {
+                plan_id: r.plan_id.clone(),
+                finding_id: r.finding_id.clone(),
+            })?;
     if state.resolution.is_some() {
         return Err(ContractError::FindingAlreadyResolved {
             plan_id: r.plan_id,
@@ -102,15 +103,16 @@ fn process_resolution(
         .ok_or(ContractError::AgentNotRegistered)?;
     let cfg = CONFIG.load(deps.storage)?;
 
-    let mut reward_applied: u128 = 0;
+    let mut stake_returned = Uint128::zero();
+    let mut reward = Uint128::zero();
     match outcome {
         Outcome::TruePositive => {
             // Stake returned + reward = stake * multiplier.
-            filing_agent.balance = filing_agent.balance.saturating_add(state.stake);
-            let reward = state.stake.saturating_mul(cfg.outcome_reward_multiplier);
+            stake_returned = state.stake;
+            reward = state.stake.saturating_mul(cfg.outcome_reward_multiplier);
+            filing_agent.balance = filing_agent.balance.saturating_add(stake_returned);
             filing_agent.balance = filing_agent.balance.saturating_add(reward);
             filing_agent.tp_count = filing_agent.tp_count.saturating_add(1);
-            reward_applied = state.stake.saturating_add(reward);
         }
         Outcome::FalsePositive => {
             // Stake stays slashed; balance already debited at commit time.
@@ -120,13 +122,13 @@ fn process_resolution(
             // No reputation change beyond returning the stake (the agent
             // shouldn't be punished for surfacing something a faster agent
             // already caught).
-            filing_agent.balance = filing_agent.balance.saturating_add(state.stake);
-            reward_applied = state.stake;
+            stake_returned = state.stake;
+            filing_agent.balance = filing_agent.balance.saturating_add(stake_returned);
         }
         Outcome::Indeterminate => {
             // Stake returned, no reward.
-            filing_agent.balance = filing_agent.balance.saturating_add(state.stake);
-            reward_applied = state.stake;
+            stake_returned = state.stake;
+            filing_agent.balance = filing_agent.balance.saturating_add(stake_returned);
         }
     }
 
@@ -138,7 +140,8 @@ fn process_resolution(
         resolver_pubkey: r.resolver_pubkey,
         evidence_hash: r.evidence_hash,
         resolved_at: env.block.time,
-        reward_applied,
+        stake_returned,
+        reward,
     });
     FINDINGS.save(deps.storage, key, &state)?;
 

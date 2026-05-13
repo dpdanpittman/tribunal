@@ -1,7 +1,7 @@
-use cosmwasm_std::Binary;
+use cosmwasm_std::{Binary, Uint128};
 use serde::{Deserialize, Serialize};
 
-use crate::state::{AgentRecord, FindingState, Severity, Outcome};
+use crate::state::{AgentRecord, FindingState};
 
 /// `InstantiateMsg` is the one-time configuration applied when the contract
 /// is instantiated.
@@ -11,11 +11,11 @@ pub struct InstantiateMsg {
     pub admin: Option<String>,
     /// Default initial reputation balance for newly registered agents.
     /// Defaults to 100 when `None`.
-    pub initial_balance: Option<u128>,
+    pub initial_balance: Option<Uint128>,
     /// Balance new (post-rotation) agents inherit. Defaults to 10 when `None`.
-    pub rotation_floor: Option<u128>,
+    pub rotation_floor: Option<Uint128>,
     /// Outcome reward multiplier (1× = break-even; 2× = methodology default).
-    pub outcome_reward_multiplier: Option<u128>,
+    pub outcome_reward_multiplier: Option<Uint128>,
 }
 
 /// `FindingCommit` is one entry in a `CommitFindingBatch`. Critical
@@ -29,7 +29,7 @@ pub struct FindingCommit {
     /// "critical" / "warning" / "suggestion"
     pub severity: String,
     pub claim_hash: String,
-    pub stake: u128,
+    pub stake: Uint128,
     /// ed25519 signature by the filing agent over the canonical bytes
     /// `plan_id || finding_id || severity || claim_hash || stake`.
     pub signature: Binary,
@@ -61,7 +61,7 @@ pub enum ExecuteMsg {
         /// "project-manager" | "adversary" | "reviewer-arch" | ...
         role: String,
         /// Optional override of the contract default. Must be >= 1.
-        initial_balance: Option<u128>,
+        initial_balance: Option<Uint128>,
     },
 
     /// Commit a single finding immediately. Used for the *real-time* path
@@ -128,12 +128,18 @@ pub enum QueryMsg {
 }
 
 // Response shapes.
+//
+// Wire-format notes:
+//   - `Uint128` serializes as a decimal string (cosmwasm-std convention).
+//   - `Binary` serializes as standard base64.
+//   - `Timestamp` (in nested AgentRecord / FindingState) serializes as a
+//     decimal string of nanoseconds since the unix epoch.
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReputationResp {
     pub pubkey: Binary,
     pub label: Option<String>,
-    pub balance: u128,
+    pub balance: Uint128,
     pub tp_count: u64,
     pub fp_count: u64,
     pub retired: bool,
@@ -141,6 +147,7 @@ pub struct ReputationResp {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AgentResp {
+    pub pubkey: Binary,
     pub agent: AgentRecord,
 }
 
@@ -154,7 +161,7 @@ pub struct LeaderboardEntry {
     pub pubkey: Binary,
     pub label: String,
     pub role: String,
-    pub balance: u128,
+    pub balance: Uint128,
     pub tp_count: u64,
     pub fp_count: u64,
 }
@@ -167,14 +174,7 @@ pub struct LeaderboardResp {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ConfigResp {
     pub admin: String,
-    pub initial_balance: u128,
-    pub rotation_floor: u128,
-    pub outcome_reward_multiplier: u128,
+    pub initial_balance: Uint128,
+    pub rotation_floor: Uint128,
+    pub outcome_reward_multiplier: Uint128,
 }
-
-// Re-export some types for tests.
-pub use crate::state::Severity as SeverityResp;
-pub use crate::state::Outcome as OutcomeResp;
-// Keep aliases stable in case test code wants them.
-pub type _Severity = Severity;
-pub type _Outcome = Outcome;

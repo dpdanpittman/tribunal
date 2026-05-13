@@ -82,12 +82,18 @@ type RotateAgentMsg struct {
 	Reason     string `json:"reason"`
 }
 
-// BuildRegisterAgent assembles a RegisterAgent execute message from a local
-// keypair + role + label. initialBalance==0 omits the field so the
-// contract applies its default.
+// BuildRegisterAgent assembles a RegisterAgent execute message from a
+// local keypair + role + label. `initialBalance == 0` omits the field so
+// the contract applies its default.
 func BuildRegisterAgent(kp *agent.Keypair, label, modelID string, role agent.Role, initialBalance uint64) (*ExecuteMsg, error) {
 	if kp == nil {
 		return nil, fmt.Errorf("nil keypair")
+	}
+	if err := validateIDField("label", label, MaxLabelLen); err != nil {
+		return nil, err
+	}
+	if err := validateIDField("model_id", modelID, MaxHashLen); err != nil {
+		return nil, err
 	}
 	msg := &RegisterAgentMsg{
 		Pubkey:  encodePubkey(kp.Public),
@@ -106,6 +112,10 @@ func BuildRegisterAgent(kp *agent.Keypair, label, modelID string, role agent.Rol
 // on-chain commit. The on-chain signature is independent of the
 // ledger-JSONL signature: the contract verifies the canonical bytes, the
 // ledger verifies the JSON payload. Both bind to the same agent pubkey.
+//
+// Identifier fields (plan_id, finding_id, claim_hash) are validated to
+// match the contract's `src/validate.rs` constraints so a malformed input
+// fails before we even build a signature.
 func BuildFindingCommit(f *ledger.Finding, kp *agent.Keypair) (*FindingCommit, error) {
 	if f == nil {
 		return nil, fmt.Errorf("nil finding")
@@ -113,11 +123,22 @@ func BuildFindingCommit(f *ledger.Finding, kp *agent.Keypair) (*FindingCommit, e
 	if kp == nil {
 		return nil, fmt.Errorf("nil keypair")
 	}
+	if err := validateIDField("plan_id", f.PlanID, MaxIDLen); err != nil {
+		return nil, err
+	}
+	if err := validateIDField("finding_id", f.FindingID, MaxIDLen); err != nil {
+		return nil, err
+	}
+	if err := validateIDField("claim_hash", f.ClaimHash, MaxHashLen); err != nil {
+		return nil, err
+	}
 	expectedPub := agent.FormatPubkey(kp.Public)
 	if expectedPub != f.AgentPubkey {
 		return nil, fmt.Errorf("commit: keypair pubkey %q does not match finding agent_pubkey %q", expectedPub, f.AgentPubkey)
 	}
-	stake := uint64(f.Stake)
+	// Stake is rendered as decimal so it matches `Uint128` wire form
+	// without going through a fixed-width integer cast.
+	stake := strconv.FormatUint(uint64(f.Stake), 10)
 	msgBytes := CanonicalFindingMessage(f.PlanID, f.FindingID, string(f.Severity), f.ClaimHash, stake)
 	sig := ed25519.Sign(kp.Private, msgBytes)
 	return &FindingCommit{
@@ -126,7 +147,7 @@ func BuildFindingCommit(f *ledger.Finding, kp *agent.Keypair) (*FindingCommit, e
 		AgentPubkey: encodeBinary(kp.Public),
 		Severity:    string(f.Severity),
 		ClaimHash:   f.ClaimHash,
-		Stake:       strconv.FormatUint(stake, 10),
+		Stake:       stake,
 		Signature:   encodeBinary(sig),
 	}, nil
 }
@@ -139,6 +160,15 @@ func BuildResolutionCommit(r *ledger.Resolution, kp *agent.Keypair) (*Resolution
 	}
 	if kp == nil {
 		return nil, fmt.Errorf("nil keypair")
+	}
+	if err := validateIDField("plan_id", r.PlanID, MaxIDLen); err != nil {
+		return nil, err
+	}
+	if err := validateIDField("finding_id", r.FindingID, MaxIDLen); err != nil {
+		return nil, err
+	}
+	if err := validateIDField("evidence_hash", r.EvidenceHash, MaxHashLen); err != nil {
+		return nil, err
 	}
 	expectedPub := agent.FormatPubkey(kp.Public)
 	if expectedPub != r.ResolverPubkey {

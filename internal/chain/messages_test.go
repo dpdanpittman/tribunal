@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func kpFromSeed(t *testing.T, b byte) *agent.Keypair {
 }
 
 func TestCanonicalFindingMessage_StableFormat(t *testing.T) {
-	got := string(CanonicalFindingMessage("P-1", "F-1", "critical", "h", 8))
+	got := string(CanonicalFindingMessage("P-1", "F-1", "critical", "h", "8"))
 	want := "TRIBUNAL_FINDING|P-1|F-1|critical|h|8"
 	if got != want {
 		t.Fatalf("canonical finding bytes drift\n got: %q\nwant: %q", got, want)
@@ -68,7 +69,7 @@ func TestBuildFindingCommit_SignatureRoundtrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pub b64: %v", err)
 	}
-	msg := CanonicalFindingMessage(f.PlanID, f.FindingID, string(f.Severity), f.ClaimHash, uint64(f.Stake))
+	msg := CanonicalFindingMessage(f.PlanID, f.FindingID, string(f.Severity), f.ClaimHash, strconv.FormatUint(uint64(f.Stake), 10))
 	if !ed25519.Verify(pub, msg, sig) {
 		t.Fatalf("signature did not verify")
 	}

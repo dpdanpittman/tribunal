@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult,
+    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    Uint128,
 };
 
 use crate::error::ContractError;
@@ -22,11 +22,13 @@ pub fn instantiate(
     };
     let cfg = Config {
         admin: admin.clone(),
-        initial_balance: msg.initial_balance.unwrap_or(100),
-        rotation_floor: msg.rotation_floor.unwrap_or(10),
-        outcome_reward_multiplier: msg.outcome_reward_multiplier.unwrap_or(2),
+        initial_balance: msg.initial_balance.unwrap_or_else(|| Uint128::new(100)),
+        rotation_floor: msg.rotation_floor.unwrap_or_else(|| Uint128::new(10)),
+        outcome_reward_multiplier: msg
+            .outcome_reward_multiplier
+            .unwrap_or_else(|| Uint128::new(2)),
     };
-    if cfg.initial_balance == 0 {
+    if cfg.initial_balance.is_zero() {
         return Err(ContractError::InvalidInitialBalance);
     }
     CONFIG.save(deps.storage, &cfg)?;

@@ -14,9 +14,12 @@
 *.swp
 .DS_Store
 
-# Tribunal local state
-.tribunal/
-!examples/*/.tribunal/
+# Tribunal local state. Most of this dir is per-developer working state,
+# but committed review reports (lens reports, adversary reports,
+# synthesis) live under .tribunal/reports/ and are tracked.
+/.tribunal/*
+!/.tribunal/reports/
+examples/*/.tribunal/local/
 
 # Contract build artifacts
 contracts/*/target/

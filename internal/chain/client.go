@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -30,14 +31,34 @@ type Client struct {
 	http *http.Client
 }
 
-// New returns a Client ready to call the chain.
+// New returns a Client ready to call the chain. Logs a one-line warning
+// to stderr if the operator's `keyring_backend = test` is combined with
+// a non-test-looking `chain_id` — `test` stores keys in plaintext and
+// should never be used against a production chain.
 func New(cfg *Config) *Client {
+	if cfg.KeyringBackend == "test" && !looksLikeTestChain(cfg.ChainID) {
+		fmt.Fprintf(os.Stderr,
+			"tribunal: WARNING — keyring_backend=test against chain_id=%q. The test backend stores signing keys in plaintext; use keyring_backend=os for any non-dev environment.\n",
+			cfg.ChainID)
+	}
 	return &Client{
 		cfg: cfg,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// looksLikeTestChain reports whether the chain id looks like a dev /
+// test environment. Used to decide whether to emit the keyring warning.
+// Chain ids containing "devnet", "testnet", or "test" are considered
+// non-production; anything else triggers the warning.
+func looksLikeTestChain(chainID string) bool {
+	id := strings.ToLower(chainID)
+	return strings.Contains(id, "devnet") ||
+		strings.Contains(id, "testnet") ||
+		strings.Contains(id, "test") ||
+		strings.Contains(id, "local")
 }
 
 // Config returns the active configuration.

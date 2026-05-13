@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-12
+
+Audit-driven fix release. The v0.3.0 contract works under `cw-multi-test`
+but had a wire-format mismatch with the Go client that `cargo test` did
+not catch (cw-multi-test bypasses the JSON boundary). The Tribunal
+methodology's own audit — three lens reviewers + one adversary — surfaced
+this plus the related issues below. Full audit packet at
+`.tribunal/reports/audit-v0.3.0/`.
+
+### Fixed
+
+- **Wire-format alignment between Rust contract and Go client.** Every
+  numeric on-chain field migrated from bare `u128` to
+  `cosmwasm_std::Uint128`, which serializes as a decimal string — the
+  shape the Go client already expected. Affected: `AgentRecord.balance`,
+  `FindingState.stake`, `Config.{initial_balance, rotation_floor,
+outcome_reward_multiplier}`, plus the corresponding query response
+  types. Also adds `pubkey` to `AgentResp` and `retired` to
+  `ReputationResp` to match the Go-side shape. ([audit F-ARCH-001,
+  F-SEC-001, A-ADV-003])
+- **`ResolutionRecord` split.** Replaced the single `reward_applied`
+  field with `stake_returned` + `reward` so consumers can distinguish
+  stake-return from outcome-reward without re-deriving from severity.
+  ([audit F-ARCH-001])
+- **Canonical signing format uses string stake.** The Go
+  `CanonicalFindingMessage` signature changed from `stake uint64` to
+  `stake string` so the canonical bytes mirror the contract's
+  `Uint128`-as-decimal-string representation identically regardless of
+  magnitude. ([audit F-SEC-001, A-ADV-003])
+- **Timestamps deserialize as strings on the Go side.** `created_at` /
+  `retired_at` / `committed_at` / `resolved_at` are decimal strings of
+  nanoseconds (the way `cosmwasm_std::Timestamp` serializes). Go
+  `uint64` → `string`. ([audit follow-up])
+- **`tp_count` / `fp_count` aligned to `uint64`.** Was `uint32` on the
+  Go side; Rust uses `u64`. ([audit follow-up])
+- **Rotation removes the old label binding.** `rotate_agent` now calls
+  `AGENTS_BY_LABEL.remove(old_label)` so label lookups no longer
+  resolve to a retired record. The retired `AgentRecord` keyed by
+  pubkey is preserved with `retired_at` + `superseded_by` — the
+  accountability trail survives. The new label is allowed to equal the
+  old one. ([audit A-ADV-001])
+- **`BatchMixedPlanID` error variant.** Replaces the misleading
+  `FindingAlreadyCommitted` that batch-mismatch checks previously
+  returned. Carries `batch_plan_id`, `found_plan_id`, `finding_id` for
+  debuggability. ([audit F-SEC-004])
+- **Keyring warning.** `Client.New()` logs a one-line warning to stderr
+  when `keyring_backend=test` is combined with a non-test chain id
+  (chain id not containing "devnet", "testnet", "test", or "local").
+  ([audit F-SEC-003])
+
+### Added
+
+- **Identifier validation** (`contracts/tribunal-reputation/src/validate.rs`,
+  `internal/chain/validate.go`). Rejects `plan_id` / `finding_id` /
+  `claim_hash` / `evidence_hash` / `label` / `model_id` / `reason` that
+  contain `|`, NUL, or any ASCII control character; enforces length
+  caps (64 chars for IDs / labels, 128 for hashes / model IDs, 256 for
+  rotation reason). Enforced symmetrically by the contract and the Go
+  builders. ([audit F-SEC-002, A-ADV-002])
+- **`MAX_BATCH_SIZE = 100`** on `commit_finding_batch` /
+  `resolve_finding_batch`. Returns `BatchTooLarge` if exceeded so a
+  malformed client can't burn gas linearly. ([audit F-PERF-002])
+- **Go wire-roundtrip tests** at `internal/chain/wire_test.go`. Hand-crafted
+  fixtures cover every response shape against the v0.3.0 wire format —
+  including the resolved-finding path that broke in v0.3.0. ([audit
+  F-ARCH-002, F-ARCH-004, methodology lesson])
+
+### Deferred (still open from the audit)
+
+- **`Config.admin` is stored but never checked.** Latent permission
+  surface. ([audit A-ADV-004]) — kept until there's a use.
+- **Leaderboard remains O(n_agents).** ([audit F-PERF-001])
+- **HTTP timeouts remain flat 30s.** ([audit F-PERF-004])
+- **No retry / partial-progress recovery for batch settlement.**
+  ([audit F-SEC-006])
+
 ## [0.3.0] — 2026-05-12
 
 ### Added

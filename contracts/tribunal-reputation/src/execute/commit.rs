@@ -1,9 +1,10 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
 use crate::msg::FindingCommit;
-use crate::state::{
-    AgentRecord, FindingState, Severity, AGENTS, FINDINGS,
+use crate::state::{AgentRecord, FindingState, Severity, AGENTS, FINDINGS};
+use crate::validate::{
+    validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN,
 };
 
 /// `commit_finding` lands a single signed finding on-chain. Used for the
@@ -28,15 +29,14 @@ pub fn commit_finding_batch(
     plan_id: String,
     findings: Vec<FindingCommit>,
 ) -> Result<Response, ContractError> {
-    if findings.is_empty() {
-        return Err(ContractError::EmptyBatch);
-    }
+    validate_batch_size(findings.len())?;
+    validate_id_field("plan_id", &plan_id, MAX_ID_LEN)?;
     let count = findings.len();
     for f in findings {
         if f.plan_id != plan_id {
-            // Reject — batch is per-plan.
-            return Err(ContractError::FindingAlreadyCommitted {
-                plan_id: f.plan_id,
+            return Err(ContractError::BatchMixedPlanID {
+                batch_plan_id: plan_id.clone(),
+                found_plan_id: f.plan_id,
                 finding_id: f.finding_id,
             });
         }
@@ -53,6 +53,10 @@ fn process_finding(
     env: Env,
     f: FindingCommit,
 ) -> Result<(), ContractError> {
+    validate_id_field("plan_id", &f.plan_id, MAX_ID_LEN)?;
+    validate_id_field("finding_id", &f.finding_id, MAX_ID_LEN)?;
+    validate_id_field("claim_hash", &f.claim_hash, MAX_HASH_LEN)?;
+
     // Verify finding hasn't already been committed.
     if FINDINGS.has(deps.storage, (f.plan_id.as_str(), f.finding_id.as_str())) {
         return Err(ContractError::FindingAlreadyCommitted {
@@ -69,9 +73,8 @@ fn process_finding(
         return Err(ContractError::AgentRetired(agent.label.clone()));
     }
 
-    let severity = Severity::from_str(&f.severity).ok_or_else(|| {
-        ContractError::InvalidSeverity(f.severity.clone())
-    })?;
+    let severity = Severity::from_str(&f.severity)
+        .ok_or_else(|| ContractError::InvalidSeverity(f.severity.clone()))?;
 
     let canonical = canonical_finding_message(
         &f.plan_id,
@@ -92,11 +95,16 @@ fn process_finding(
     // Reserve the stake.
     if agent.balance < f.stake {
         return Err(ContractError::InsufficientStake {
-            balance: agent.balance,
-            requested: f.stake,
+            balance: agent.balance.to_string(),
+            requested: f.stake.to_string(),
         });
     }
-    agent.balance -= f.stake;
+    agent.balance = agent.balance.checked_sub(f.stake).map_err(|_| {
+        ContractError::InsufficientStake {
+            balance: agent.balance.to_string(),
+            requested: f.stake.to_string(),
+        }
+    })?;
     AGENTS.save(deps.storage, f.agent_pubkey.as_slice(), &agent)?;
 
     let state = FindingState {
@@ -119,14 +127,15 @@ fn process_finding(
 
 /// `canonical_finding_message` returns the bytes that an agent signs to
 /// authorize a commit. The encoding is deliberately simple: ASCII-only,
-/// pipe-separated, with the stake serialized as decimal. Mirrored exactly
-/// in the Go `internal/chain/messages.go` builder.
+/// pipe-separated, with the stake serialized as decimal (via `Uint128`'s
+/// `Display`). Mirrored exactly in the Go `internal/chain/canonical.go`
+/// builder.
 pub fn canonical_finding_message(
     plan_id: &str,
     finding_id: &str,
     severity: &str,
     claim_hash: &str,
-    stake: u128,
+    stake: Uint128,
 ) -> Vec<u8> {
     format!(
         "TRIBUNAL_FINDING|{}|{}|{}|{}|{}",

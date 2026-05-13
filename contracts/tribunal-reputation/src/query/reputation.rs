@@ -1,4 +1,4 @@
-use cosmwasm_std::{Binary, Deps, StdResult};
+use cosmwasm_std::{Binary, Deps, StdResult, Uint128};
 
 use crate::msg::ReputationResp;
 use crate::state::AGENTS;
@@ -17,7 +17,7 @@ pub fn reputation(deps: Deps, pubkey: Binary) -> StdResult<ReputationResp> {
         None => ReputationResp {
             pubkey,
             label: None,
-            balance: 0,
+            balance: Uint128::zero(),
             tp_count: 0,
             fp_count: 0,
             retired: false,

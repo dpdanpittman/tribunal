@@ -47,7 +47,20 @@ pub enum ContractError {
     InvalidRole(String),
 
     #[error("insufficient stake balance: agent has {balance}, finding requires {requested}")]
-    InsufficientStake { balance: u128, requested: u128 },
+    InsufficientStake { balance: String, requested: String },
+
+    #[error("invalid {field}: {reason}")]
+    InvalidIdentifier { field: String, reason: String },
+
+    #[error("batch contains {actual} items; max allowed is {max}")]
+    BatchTooLarge { actual: usize, max: usize },
+
+    #[error("batch contains entries from multiple plans: batch plan_id={batch_plan_id}, found plan_id={found_plan_id} on finding {finding_id}")]
+    BatchMixedPlanID {
+        batch_plan_id: String,
+        found_plan_id: String,
+        finding_id: String,
+    },
 
     #[error("zero or negative initial balance not allowed")]
     InvalidInitialBalance,

@@ -7,7 +7,7 @@ pub fn agent(deps: Deps, pubkey: Binary) -> StdResult<AgentResp> {
     let agent = AGENTS
         .may_load(deps.storage, pubkey.as_slice())?
         .ok_or_else(|| StdError::not_found("agent"))?;
-    Ok(AgentResp { agent })
+    Ok(AgentResp { pubkey, agent })
 }
 
 pub fn agent_by_label(deps: Deps, label: String) -> StdResult<AgentResp> {
