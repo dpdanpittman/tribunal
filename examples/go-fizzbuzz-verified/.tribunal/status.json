@@ -1,0 +1,13 @@
+{
+  "plans": [
+    {
+      "id": "P-fizzbuzz",
+      "intent_path": "intent.md",
+      "owner": "@tribunal-pm",
+      "plan_path": "(walked through inline)",
+      "state": "Done",
+      "working_branch": "main"
+    }
+  ],
+  "residual_findings": {}
+}

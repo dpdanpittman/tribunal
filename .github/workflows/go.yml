@@ -1,0 +1,88 @@
+name: Go CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go-version: ["1.23"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Verify modules
+        run: |
+          go mod download
+          go mod verify
+
+      - name: gofmt
+        run: |
+          diff=$(gofmt -s -d .)
+          if [ -n "$diff" ]; then
+            echo "gofmt -s -d . produced diff:"
+            echo "$diff"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test (with race detector)
+        run: go test -race -count=1 ./...
+
+      - name: Build CLI binary
+        run: go build -o tribunal ./cmd/tribunal
+
+      - name: Smoke-test CLI
+        run: |
+          ./tribunal --version
+          ./tribunal --help
+
+  fizzbuzz-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Build and test example
+        working-directory: examples/go-fizzbuzz-verified
+        run: |
+          go build ./...
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - name: Verify demo ledger
+        run: |
+          go build -o tribunal ./cmd/tribunal
+          cd examples/go-fizzbuzz-verified
+          ../../tribunal ledger verify
+          ../../tribunal ledger summary
+
+      - name: Re-seed is deterministic
+        run: |
+          go run ./cmd/seed-fizzbuzz-demo
+          if ! git diff --quiet examples/go-fizzbuzz-verified/.tribunal/; then
+            echo "Re-seeding the fizzbuzz demo produced a diff — seed is non-deterministic."
+            git --no-pager diff examples/go-fizzbuzz-verified/.tribunal/
+            exit 1
+          fi
