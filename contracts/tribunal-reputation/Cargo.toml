@@ -1,0 +1,37 @@
+[package]
+name = "tribunal-reputation"
+version = "0.3.0"
+edition = "2021"
+authors = ["Daniel Pittman <dpdanpittman@gmail.com>"]
+license = "MIT"
+description = "Soulbound reputation token for Tribunal — tracks per-agent finding outcomes with stake/slash/reward semantics on CosmWasm-compatible chains (Burnt XION)."
+repository = "https://github.com/dpdanpittman/tribunal"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Build without the wasm entry points (useful when re-exporting types).
+library = []
+
+[dependencies]
+cosmwasm-std = { version = "2", features = ["cosmwasm_2_0"] }
+cw-storage-plus = "2"
+serde = { version = "1", default-features = false, features = ["derive"] }
+thiserror = "1"
+
+[dev-dependencies]
+cw-multi-test = "2"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+rand = { version = "0.8", default-features = false, features = ["getrandom"] }
+
+[profile.release]
+opt-level = "z"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = "abort"
+incremental = false
+overflow-checks = true

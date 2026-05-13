@@ -21,7 +21,6 @@
 # Contract build artifacts
 contracts/*/target/
 contracts/*/artifacts/
-contracts/*/Cargo.lock
 
 # Secrets (the contract operator key, chain config)
 ~/.tribunal/
