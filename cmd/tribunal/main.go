@@ -35,6 +35,7 @@ func newRootCmd() *cobra.Command {
 		newReviewCmd(),
 		newVerifyCmd(),
 		newDispatchCmd(),
+		newChainCmd(),
 	)
 	return cmd
 }
@@ -52,6 +53,10 @@ Common workflows:
   tribunal agents add claude-adversary --model claude-opus-4-7 --role adversary
   tribunal review .
   tribunal ledger summary
+  tribunal chain init --chain-id xion-testnet-2 --node-rpc ... --contract cosmwasm1...
+  tribunal chain register claude-adversary
+  tribunal chain sync --plan P-42
+  tribunal chain query leaderboard
 `
 
 // printErr formats an error to stderr with the program prefix. Used by

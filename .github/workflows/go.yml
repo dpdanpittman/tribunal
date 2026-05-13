@@ -58,6 +58,8 @@ jobs:
           ./tribunal dispatch --help
           ./tribunal dispatch test --panel default
           ./tribunal dispatch test --panel high-stakes
+          ./tribunal chain --help
+          ./tribunal chain query --help
 
   fizzbuzz-example:
     runs-on: ubuntu-latest

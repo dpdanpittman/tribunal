@@ -17,16 +17,16 @@ type ReputationResp struct {
 
 // AgentRecord mirrors src/state.rs::AgentRecord on the query side.
 type AgentRecord struct {
-	Label         string  `json:"label"`
-	ModelID       string  `json:"model_id"`
-	Role          string  `json:"role"`
-	Balance       string  `json:"balance"`
-	TPCount       uint32  `json:"tp_count"`
-	FPCount       uint32  `json:"fp_count"`
-	CreatedAt     uint64  `json:"created_at"`
-	RetiredAt     *uint64 `json:"retired_at,omitempty"`
-	SupersededBy  *string `json:"superseded_by,omitempty"`
-	RotatedFrom   *string `json:"rotated_from,omitempty"`
+	Label        string  `json:"label"`
+	ModelID      string  `json:"model_id"`
+	Role         string  `json:"role"`
+	Balance      string  `json:"balance"`
+	TPCount      uint32  `json:"tp_count"`
+	FPCount      uint32  `json:"fp_count"`
+	CreatedAt    uint64  `json:"created_at"`
+	RetiredAt    *uint64 `json:"retired_at,omitempty"`
+	SupersededBy *string `json:"superseded_by,omitempty"`
+	RotatedFrom  *string `json:"rotated_from,omitempty"`
 }
 
 // AgentResp mirrors src/msg.rs::AgentResp.
@@ -37,14 +37,14 @@ type AgentResp struct {
 
 // FindingState mirrors src/state.rs::FindingState (for query results).
 type FindingState struct {
-	PlanID      string             `json:"plan_id"`
-	FindingID   string             `json:"finding_id"`
-	AgentPubkey string             `json:"agent_pubkey"`
-	Severity    string             `json:"severity"`
-	ClaimHash   string             `json:"claim_hash"`
-	Stake       string             `json:"stake"`
-	CommittedAt uint64             `json:"committed_at"`
-	Resolution  *ResolutionRecord  `json:"resolution,omitempty"`
+	PlanID      string            `json:"plan_id"`
+	FindingID   string            `json:"finding_id"`
+	AgentPubkey string            `json:"agent_pubkey"`
+	Severity    string            `json:"severity"`
+	ClaimHash   string            `json:"claim_hash"`
+	Stake       string            `json:"stake"`
+	CommittedAt uint64            `json:"committed_at"`
+	Resolution  *ResolutionRecord `json:"resolution,omitempty"`
 }
 
 // ResolutionRecord mirrors src/state.rs::ResolutionRecord.

@@ -26,18 +26,18 @@ type KeyResolver interface {
 //  3. Submit one CommitFindingBatch and one ResolveFindingBatch per plan.
 //     Either may be empty, in which case the corresponding tx is skipped.
 type Sync struct {
-	Client   *Client
-	Keys     KeyResolver
-	Queue    *Queue
+	Client *Client
+	Keys   KeyResolver
+	Queue  *Queue
 }
 
 // SyncResult summarizes one plan's settlement.
 type SyncResult struct {
-	PlanID           string
-	FindingsSent     int
-	ResolutionsSent  int
-	CommitTxHash     string
-	ResolveTxHash    string
+	PlanID            string
+	FindingsSent      int
+	ResolutionsSent   int
+	CommitTxHash      string
+	ResolveTxHash     string
 	QueueDrainedCount int
 }
 

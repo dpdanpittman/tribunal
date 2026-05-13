@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-12
+
+### Added
+
+- **CosmWasm reputation contract** (`contracts/tribunal-reputation/`): single-tenant, soulbound reputation token on Burnt XION. Each agent is identified by a 32-byte ed25519 pubkey + unique label + role. Findings and resolutions are signed off-chain (`ed25519_verify` in the contract) and persisted as `FindingState` keyed by `(plan_id, finding_id)`. Stake debited on commit; on resolve, `true_positive` returns stake + `stake × outcome_reward_multiplier`, `false_positive` keeps the stake slashed, `stale_duplicate` / `indeterminate` return the stake with no reward. Rotation preserves TP/FP history but resets balance to the configured `rotation_floor`. Built against `cosmwasm-std` 2.x, `cw-storage-plus` 2.x, `cw-multi-test` 2.x. 15 integration tests cover every execute path + every error path.
+- **Go chain client** (`internal/chain/`): mirrors the contract surface. Hybrid settlement protocol — `Sync.CommitRealtime` for critical findings (with a JSONL retry queue at `.tribunal/chain-queue.jsonl` on failure), `Sync.SyncPlan` / `Sync.SyncAll` for plan-close batched commits + resolutions. Transports split: txs shelled out to `xiond tx wasm execute` (so users keep one keyring for all XION ops), queries direct HTTP to the LCD REST endpoint. `xiond_binary` config accepts prefix args (e.g. `docker exec devnet-xion-1 xiond`) for contributors running the devnet in containers. Canonical signing messages (`TRIBUNAL_FINDING|...`, `TRIBUNAL_RESOLUTION|...`) are byte-identical to the Rust contract helpers.
+- **`tribunal chain` CLI tree**: `init` (writes `~/.tribunal/chain.yaml`), `status` (RPC health + height), `register <label>`, `sync [--plan <id>]`, `query {reputation,agent,finding,leaderboard,config}`, `rotate <old> <new>`, `queue {list,clear}`. Reputation / agent lookups accept either an `ed25519:<hex>` pubkey or a local label.
+- **Deploy scripts**: `scripts/deploy-contract.sh` (cargo wasm → optional `cosmwasm/optimizer` pass → `xiond tx wasm store` + instantiate → emits a `chain.yaml` snippet to stdout). `scripts/init-testnet.sh` probes a locally-running XION devnet and emits the env-var exports the deploy script needs.
+- **Contracts CI workflow** (`.github/workflows/contracts.yml`): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --release`, `cargo wasm`, `cosmwasm-check` on the built artifact.
+- **On-chain protocol doc** at `docs/on-chain-protocol.md` covering contract surface, wire format, signing canonicalization, gas considerations, and the hybrid settlement flow.
+
+### Changed
+
+- Repo gitignore ignores `contracts/*/target/` and `contracts/*/artifacts/` but commits `Cargo.lock` (binary-crate convention).
+- Root CLI help lists the v0.3 chain workflow.
+
+### Not yet implemented (v0.4+)
+
+- Multi-org tenancy (single global agent registry for now).
+- Cross-chain reputation (XION only).
+- Slashing appeals (resolutions are final; PMs can re-file but old ones stay in the audit trail).
+- Fungible operator rewards.
+- Web leaderboard dashboard.
+
 ## [0.2.0] — 2026-05-12
 
 ### Added

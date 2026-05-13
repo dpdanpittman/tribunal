@@ -140,4 +140,3 @@ func (q *Queue) rewrite(entries []QueueEntry) error {
 	}
 	return os.Rename(tmp.Name(), q.path)
 }
-

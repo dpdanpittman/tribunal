@@ -36,6 +36,13 @@ ANTHROPIC_API_KEY=sk-... tribunal review --plan P-42
 # Inspect what's in the ledger.
 tribunal ledger summary
 tribunal ledger leaderboard
+
+# v0.3: settle to Burnt XION. Deploy once, then sync per plan.
+./scripts/deploy-contract.sh                  # produces a chain.yaml snippet
+tribunal chain init --chain-id xion-testnet-2 --contract cosmwasm1... ...
+tribunal chain register claude-adversary
+tribunal chain sync --plan P-42
+tribunal chain query leaderboard
 ```
 
 ## Status

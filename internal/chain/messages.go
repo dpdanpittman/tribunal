@@ -22,12 +22,12 @@ import (
 // with encoding/json — Go's struct-field JSON tags reproduce the
 // serde(rename_all = "snake_case") shape exactly.
 type ExecuteMsg struct {
-	RegisterAgent       *RegisterAgentMsg     `json:"register_agent,omitempty"`
-	CommitFinding       *FindingCommit        `json:"commit_finding,omitempty"`
-	CommitFindingBatch  *CommitBatchMsg       `json:"commit_finding_batch,omitempty"`
-	ResolveFinding      *ResolutionCommit     `json:"resolve_finding,omitempty"`
-	ResolveFindingBatch *ResolveBatchMsg      `json:"resolve_finding_batch,omitempty"`
-	RotateAgent         *RotateAgentMsg       `json:"rotate_agent,omitempty"`
+	RegisterAgent       *RegisterAgentMsg `json:"register_agent,omitempty"`
+	CommitFinding       *FindingCommit    `json:"commit_finding,omitempty"`
+	CommitFindingBatch  *CommitBatchMsg   `json:"commit_finding_batch,omitempty"`
+	ResolveFinding      *ResolutionCommit `json:"resolve_finding,omitempty"`
+	ResolveFindingBatch *ResolveBatchMsg  `json:"resolve_finding_batch,omitempty"`
+	RotateAgent         *RotateAgentMsg   `json:"rotate_agent,omitempty"`
 }
 
 // RegisterAgentMsg matches src/msg.rs::ExecuteMsg::RegisterAgent.
@@ -75,11 +75,11 @@ type ResolveBatchMsg struct {
 
 // RotateAgentMsg matches src/msg.rs::ExecuteMsg::RotateAgent.
 type RotateAgentMsg struct {
-	OldPubkey   string `json:"old_pubkey"`
-	NewPubkey   string `json:"new_pubkey"`
-	NewLabel    string `json:"new_label"`
-	NewModelID  string `json:"new_model_id"`
-	Reason      string `json:"reason"`
+	OldPubkey  string `json:"old_pubkey"`
+	NewPubkey  string `json:"new_pubkey"`
+	NewLabel   string `json:"new_label"`
+	NewModelID string `json:"new_model_id"`
+	Reason     string `json:"reason"`
 }
 
 // BuildRegisterAgent assembles a RegisterAgent execute message from a local
@@ -158,12 +158,12 @@ func BuildResolutionCommit(r *ledger.Resolution, kp *agent.Keypair) (*Resolution
 
 // QueryMsg is the contract's query union. Same wire convention as ExecuteMsg.
 type QueryMsg struct {
-	Reputation    *QueryReputation    `json:"reputation,omitempty"`
-	Agent         *QueryAgent         `json:"agent,omitempty"`
-	AgentByLabel  *QueryAgentByLabel  `json:"agent_by_label,omitempty"`
-	Finding       *QueryFinding       `json:"finding,omitempty"`
-	Leaderboard   *QueryLeaderboard   `json:"leaderboard,omitempty"`
-	Config        *struct{}           `json:"config,omitempty"`
+	Reputation   *QueryReputation   `json:"reputation,omitempty"`
+	Agent        *QueryAgent        `json:"agent,omitempty"`
+	AgentByLabel *QueryAgentByLabel `json:"agent_by_label,omitempty"`
+	Finding      *QueryFinding      `json:"finding,omitempty"`
+	Leaderboard  *QueryLeaderboard  `json:"leaderboard,omitempty"`
+	Config       *struct{}          `json:"config,omitempty"`
 }
 
 type QueryReputation struct {
