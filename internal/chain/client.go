@@ -73,10 +73,15 @@ type BroadcastResult struct {
 }
 
 // Execute submits the given ExecuteMsg to the contract via `xiond tx wasm
-// execute`. Blocks until the tx is included in a block (broadcast mode
-// `sync` + a tx query). Returns the broadcast result.
+// execute` and waits for the tx to be included in a block. Returns the
+// broadcast result with on-chain status (code, raw_log) filled in.
 //
-// The caller-supplied ctx bounds the entire round-trip.
+// xiond's `broadcast-mode sync` only confirms mempool acceptance — back-to-back
+// Execute calls without a wait hit `account sequence mismatch` because the
+// caller's cached sequence is stale until the prior tx lands. Polling the
+// REST tx endpoint here makes sequential Executes safe.
+//
+// The caller-supplied ctx bounds the entire round-trip including the wait.
 func (c *Client) Execute(ctx context.Context, msg *ExecuteMsg) (*BroadcastResult, error) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
@@ -104,9 +109,91 @@ func (c *Client) Execute(ctx context.Context, msg *ExecuteMsg) (*BroadcastResult
 		return nil, fmt.Errorf("parse xiond output: %w (output=%q)", err, string(out))
 	}
 	if res.Code != 0 {
-		return &res, fmt.Errorf("tx failed (code=%d): %s", res.Code, res.RawLog)
+		return &res, fmt.Errorf("tx broadcast failed (code=%d): %s", res.Code, res.RawLog)
+	}
+	if res.TxHash == "" {
+		return &res, fmt.Errorf("xiond returned empty txhash; raw output=%q", string(out))
+	}
+	if err := c.WaitForTx(ctx, res.TxHash); err != nil {
+		return &res, fmt.Errorf("wait for inclusion: %w", err)
 	}
 	return &res, nil
+}
+
+// WaitForTx polls the REST tx endpoint until the given hash is found or
+// ctx is cancelled. Returns an error if the tx is found but failed
+// (on-chain code != 0). The default per-attempt timeout is short
+// (300ms) and the poll cadence is 1s; the function gives up only when
+// ctx is done. For headless callers without an explicit ctx, wrap the
+// call in context.WithTimeout(parent, 30*time.Second) or similar.
+func (c *Client) WaitForTx(ctx context.Context, txhash string) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		ok, code, log, err := c.fetchTx(ctx, txhash)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if code != 0 {
+				return fmt.Errorf("tx %s failed on-chain (code=%d): %s", txhash, code, log)
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("tx %s not included before context done: %w", txhash, ctx.Err())
+		case <-ticker.C:
+			// poll again
+		}
+	}
+}
+
+// fetchTx returns (found, code, raw_log, err). A 404 from the REST
+// endpoint means "tx not yet indexed" and is reported as found=false, not
+// an error.
+func (c *Client) fetchTx(ctx context.Context, txhash string) (bool, int, string, error) {
+	u, err := url.JoinPath(c.cfg.NodeREST, "cosmos", "tx", "v1beta1", "txs", txhash)
+	if err != nil {
+		return false, 0, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false, 0, "", err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return false, 0, "", fmt.Errorf("tx fetch http: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, 0, "", err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, 0, "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, 0, "", fmt.Errorf("tx fetch http %d: %s", resp.StatusCode, string(body))
+	}
+	var env struct {
+		TxResponse struct {
+			Code   int    `json:"code"`
+			RawLog string `json:"raw_log"`
+			Height string `json:"height"`
+		} `json:"tx_response"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return false, 0, "", fmt.Errorf("parse tx response: %w (body=%q)", err, string(body))
+	}
+	// Some LCD implementations 200 with an empty payload while a tx is in
+	// limbo between mempool and indexing. Treat height=="" as "not yet
+	// indexed" so the caller keeps polling.
+	if env.TxResponse.Height == "" {
+		return false, 0, "", nil
+	}
+	return true, env.TxResponse.Code, env.TxResponse.RawLog, nil
 }
 
 // Query executes a smart query against the contract via the LCD REST

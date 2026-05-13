@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -14,6 +15,16 @@ import (
 	"github.com/dpdanpittman/tribunal/internal/chain"
 	"github.com/dpdanpittman/tribunal/internal/ledger"
 )
+
+// normalizeRPCScheme rewrites Tendermint-style tcp:// URLs to http://.
+// Go's net/http client does not accept tcp://; xiond accepts both. Returns
+// the (possibly-rewritten) URL and whether it was changed.
+func normalizeRPCScheme(rpc string) (string, bool) {
+	if strings.HasPrefix(rpc, "tcp://") {
+		return "http://" + strings.TrimPrefix(rpc, "tcp://"), true
+	}
+	return rpc, false
+}
 
 // newChainCmd is the root for every on-chain operation. v0.3-only —
 // fully ignorable for v0.1/v0.2 workflows.
@@ -47,9 +58,38 @@ func newChainInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Write ~/.tribunal/chain.yaml with the given chain + contract config",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if rewritten, changed := normalizeRPCScheme(cfg.NodeRPC); changed {
+				fmt.Fprintf(os.Stderr,
+					"tribunal: rewriting --node-rpc %q -> %q (Go HTTP client requires http://; xiond accepts both)\n",
+					cfg.NodeRPC, rewritten)
+				cfg.NodeRPC = rewritten
+			}
+
 			if err := cfg.Save(path); err != nil {
 				return err
 			}
+
+			// Best-effort: query the contract for outcome_reward_multiplier
+			// and update the saved file. Failures here are non-fatal — the
+			// basic config is already on disk and the operator can edit
+			// the multiplier in by hand if the chain is unreachable.
+			client := chain.New(cfg)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if resp, err := client.ContractConfig(ctx); err != nil {
+				fmt.Fprintf(os.Stderr,
+					"tribunal: WARNING — could not query contract for reward multiplier (%v); chain.yaml has outcome_reward_multiplier=0. Edit by hand or re-run chain init when the chain is reachable.\n",
+					err)
+			} else {
+				var n uint64
+				if _, parseErr := fmt.Sscanf(resp.OutcomeRewardMultiplier, "%d", &n); parseErr == nil {
+					cfg.OutcomeRewardMultiplier = n
+					if err := cfg.Save(path); err != nil {
+						return err
+					}
+				}
+			}
+
 			fmt.Println("✓ chain config saved")
 			return nil
 		},

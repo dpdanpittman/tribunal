@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-05-13
+
+Devnet-driven tooling release. The contract itself shipped clean in v0.3.1 — every audit fix verified end-to-end against a live `xion-devnet-1` chain (`wasmd v0.54.0`, `xiond v20.0.0`). What didn't ship clean was the deploy + sync tooling around it. v0.3.2 fixes six defects surfaced by the first real-chain test run. No contract changes; no migration required. Test-run report at `.tribunal/reports/devnet-e2e-2026-05-13.md`.
+
+### Fixed
+
+- **`scripts/deploy-contract.sh`: `--optimize` is now the default, not opt-in.** The dev-built wasm fails on wasmd v0.54+ with `Wasm bytecode could not be deserialized. Deserialization error: "bulk memory support is not enabled"`. The optimizer pass strips those ops and is required against any modern chain. New `--skip-optimize` flag for environments without docker; raw `cargo build` is now the escape hatch instead of the default. ([F1])
+- **`scripts/deploy-contract.sh`: bumped `cosmwasm/optimizer` from `0.16.0` to `0.17.0`.** The 0.16.0 image ships Rust 1.78.0, which can't build `base64ct v1.8.3` (transitive through `cosmwasm-std`) because that crate requires `edition2024` (Cargo 1.85+). 0.17.0 ships a new-enough toolchain. Image tag is now also overridable via `OPTIMIZER_IMAGE` env. ([F2])
+- **`tribunal chain init` normalizes `tcp://` RPC URLs to `http://`.** xiond accepts `tcp://localhost:26657` (Tendermint convention); Go's `net/http` does not. Without this, every `chain.*` command after init fails with `unsupported protocol scheme "tcp"`. The rewrite is logged to stderr so the user sees what happened. ([F3])
+- **`internal/chain.Client.Execute` now waits for tx inclusion.** Previously, `--broadcast-mode sync` only confirmed mempool acceptance; back-to-back Executes (e.g. `register` then `sync`, or sync's own commit→resolve pipeline) hit `account sequence mismatch, expected N, got N-1` because xiond's cached sequence was stale. The client now polls `/cosmos/tx/v1beta1/txs/{hash}` on a 1s cadence until the tx lands or ctx is cancelled. ([F4])
+- **`tribunal chain sync` is now idempotent against partial failure.** Before building a commit_finding_batch or resolve_finding_batch, sync queries the contract for each finding's current state and filters out entries already on-chain. Retrying after a partial failure no longer dies with `finding P-X/F-Y already committed`. Pre-flight query failures are tolerated (treated as "unknown") so flaky REST doesn't block sync — the contract's own duplicate guard remains the final authority. ([F5])
+- **`tribunal chain init` auto-populates `outcome_reward_multiplier` from the deployed contract.** Previously it wrote `0` regardless of what the contract had; the field is documented as a client-side preview but was lying. Now `chain init` queries `Config{}` and writes the real value. Falls back with a warning if the chain is unreachable at init time. ([F6])
+
+### Internal
+
+- New `cmd/tribunal-seed/` — small throwaway harness used to seed the local ledger with a signed finding + resolution for e2e testing against a running chain. Not user-facing; useful for reproducing the test-run report and verifying future tooling fixes.
+
 ## [0.3.1] — 2026-05-12
 
 Audit-driven fix release. The v0.3.0 contract works under `cw-multi-test`

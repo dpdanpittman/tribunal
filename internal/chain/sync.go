@@ -83,7 +83,48 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 		result.QueueDrainedCount = len(drained)
 	}
 
-	// Build commits.
+	// Pre-flight: query the chain for state of each finding in this plan.
+	// Findings already committed are skipped on the commit side; findings
+	// already resolved are skipped on the resolve side. This makes sync
+	// idempotent — retrying after a partial failure no longer dies with
+	// "already committed".
+	committedOnChain := map[string]bool{}
+	resolvedOnChain := map[string]bool{}
+	checkIDs := map[string]struct{}{}
+	for _, f := range findings {
+		if f.PlanID == planID {
+			checkIDs[f.FindingID] = struct{}{}
+		}
+	}
+	for _, r := range resolutions {
+		if r.PlanID == planID {
+			checkIDs[r.FindingID] = struct{}{}
+		}
+	}
+	for _, q := range queued {
+		if q.Msg != nil && q.Msg.CommitFinding != nil {
+			checkIDs[q.Msg.CommitFinding.FindingID] = struct{}{}
+		}
+	}
+	for id := range checkIDs {
+		resp, err := s.Client.Finding(ctx, planID, id)
+		if err != nil {
+			// Don't fail the whole sync if a single pre-flight query
+			// errors — fall back to "unknown" (treat as not committed)
+			// and let the contract's own duplicate guard be the final
+			// authority. This keeps sync resilient to flaky REST.
+			continue
+		}
+		if resp.Finding == nil {
+			continue
+		}
+		committedOnChain[id] = true
+		if resp.Finding.Resolution != nil {
+			resolvedOnChain[id] = true
+		}
+	}
+
+	// Build commits (skip findings already on-chain).
 	var commits []FindingCommit
 	seen := map[string]struct{}{}
 	for _, f := range findings {
@@ -94,6 +135,9 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			continue
 		}
 		seen[f.FindingID] = struct{}{}
+		if committedOnChain[f.FindingID] {
+			continue
+		}
 		kp, err := s.Keys.KeypairFor(f.AgentPubkey)
 		if err != nil {
 			return nil, fmt.Errorf("resolve key for finding %s: %w", f.FindingID, err)
@@ -104,7 +148,7 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 		}
 		commits = append(commits, *commit)
 	}
-	// Fold in queue entries that are commits.
+	// Fold in queue entries that are commits (also skip if already on-chain).
 	for _, q := range queued {
 		if q.Msg == nil || q.Msg.CommitFinding == nil {
 			continue
@@ -113,13 +157,19 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			continue
 		}
 		seen[q.Msg.CommitFinding.FindingID] = struct{}{}
+		if committedOnChain[q.Msg.CommitFinding.FindingID] {
+			continue
+		}
 		commits = append(commits, *q.Msg.CommitFinding)
 	}
 
-	// Build resolutions.
+	// Build resolutions (skip ones already resolved on-chain).
 	var resCommits []ResolutionCommit
 	for _, r := range resolutions {
 		if r.PlanID != planID {
+			continue
+		}
+		if resolvedOnChain[r.FindingID] {
 			continue
 		}
 		kp, err := s.Keys.KeypairFor(r.ResolverPubkey)

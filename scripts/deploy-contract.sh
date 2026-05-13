@@ -15,10 +15,12 @@
 #   GAS_ADJUSTMENT   safety multiplier (default: 1.4)
 #
 # What it does:
-#   1. cargo build --release --target wasm32-unknown-unknown
-#      (skipped if --skip-build is given)
-#   2. (optional) cosmwasm/optimizer Docker pass for production-sized wasm.
-#      Pass --optimize. Without it, the dev-built wasm is uploaded as-is.
+#   1. cosmwasm/optimizer Docker pass (default). Produces a stripped,
+#      production-sized wasm in contracts/tribunal-reputation/artifacts/.
+#      Pass --skip-optimize to fall back to a raw `cargo build` instead —
+#      note that the raw build embeds wasm bulk-memory ops that wasmd
+#      v0.54+ rejects, so this only works against chains that allow them.
+#   2. (or --skip-build, which uses whatever wasm is already on disk.)
 #   3. xiond tx wasm store ... | extract code_id
 #   4. xiond tx wasm instantiate ... | extract contract_address
 #   5. echo a chain.yaml snippet to stdout so the operator can copy it into
@@ -28,17 +30,19 @@ set -euo pipefail
 
 LABEL="tribunal-reputation-v1"
 ADMIN=""
-OPTIMIZE=0
+OPTIMIZE=1
 SKIP_BUILD=0
 INITIAL_BALANCE=100
 ROTATION_FLOOR=10
 REWARD_MULTIPLIER=2
+OPTIMIZER_IMAGE="${OPTIMIZER_IMAGE:-cosmwasm/optimizer:0.17.0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --label) LABEL="$2"; shift 2 ;;
     --admin) ADMIN="$2"; shift 2 ;;
     --optimize) OPTIMIZE=1; shift ;;
+    --skip-optimize) OPTIMIZE=0; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --initial-balance) INITIAL_BALANCE="$2"; shift 2 ;;
     --rotation-floor) ROTATION_FLOOR="$2"; shift 2 ;;
@@ -63,21 +67,26 @@ OPT_OUT="$CONTRACT_DIR/artifacts/tribunal_reputation.wasm"
 
 cd "$CONTRACT_DIR"
 
-if [[ "$SKIP_BUILD" -ne 1 ]]; then
-  echo "==> cargo build --release --target wasm32-unknown-unknown"
-  cargo build --release --target wasm32-unknown-unknown
-fi
-
-UPLOAD_PATH="$WASM_OUT"
-
 if [[ "$OPTIMIZE" -eq 1 ]]; then
-  echo "==> cosmwasm/optimizer pass"
-  mkdir -p "$CONTRACT_DIR/artifacts"
-  docker run --rm -v "$CONTRACT_DIR":/code \
-    --mount type=volume,source=tribunal_reputation_cache,target=/code/target \
-    --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-    cosmwasm/optimizer:0.16.0
+  if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    echo "==> $OPTIMIZER_IMAGE pass"
+    mkdir -p "$CONTRACT_DIR/artifacts"
+    docker run --rm -v "$CONTRACT_DIR":/code \
+      --mount type=volume,source=tribunal_reputation_cache,target=/code/target \
+      --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+      "$OPTIMIZER_IMAGE"
+  else
+    echo "==> --skip-build: using existing $OPT_OUT"
+  fi
   UPLOAD_PATH="$OPT_OUT"
+else
+  if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    echo "==> cargo build --release --target wasm32-unknown-unknown (raw, --skip-optimize)"
+    cargo build --release --target wasm32-unknown-unknown
+  else
+    echo "==> --skip-build: using existing $WASM_OUT"
+  fi
+  UPLOAD_PATH="$WASM_OUT"
 fi
 
 if [[ ! -f "$UPLOAD_PATH" ]]; then
