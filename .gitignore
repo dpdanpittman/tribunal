@@ -1,0 +1,27 @@
+# Go build output
+/tribunal
+/bin/
+*.test
+*.out
+*.prof
+
+# Go module cache (only if vendored — we don't vendor by default)
+/vendor/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Tribunal local state
+.tribunal/
+!examples/*/.tribunal/
+
+# Contract build artifacts
+contracts/*/target/
+contracts/*/artifacts/
+contracts/*/Cargo.lock
+
+# Secrets (the contract operator key, chain config)
+~/.tribunal/
