@@ -19,14 +19,14 @@ const (
 // LayerResult captures one layer's outcome with enough detail for both
 // reporting and classifier hand-off.
 type LayerResult struct {
-	Layer    string        `json:"layer"`              // canonical layer name, e.g. "go-vet"
-	Tool     string        `json:"tool"`               // the binary or function invoked
-	Status   LayerStatus   `json:"status"`             // passed | failed | skipped | not_applicable
-	Duration time.Duration `json:"duration"`           // wall-clock time
-	Command  []string      `json:"command,omitempty"`  // argv if executed
-	Stdout   string        `json:"stdout,omitempty"`   // captured stdout, possibly truncated
-	Stderr   string        `json:"stderr,omitempty"`   // captured stderr, possibly truncated
-	Note     string        `json:"note,omitempty"`     // human-readable reason for skipped / not_applicable
+	Layer    string        `json:"layer"`             // canonical layer name, e.g. "go-vet"
+	Tool     string        `json:"tool"`              // the binary or function invoked
+	Status   LayerStatus   `json:"status"`            // passed | failed | skipped | not_applicable
+	Duration time.Duration `json:"duration"`          // wall-clock time
+	Command  []string      `json:"command,omitempty"` // argv if executed
+	Stdout   string        `json:"stdout,omitempty"`  // captured stdout, possibly truncated
+	Stderr   string        `json:"stderr,omitempty"`  // captured stderr, possibly truncated
+	Note     string        `json:"note,omitempty"`    // human-readable reason for skipped / not_applicable
 	ExitCode int           `json:"exit_code,omitempty"`
 }
 
