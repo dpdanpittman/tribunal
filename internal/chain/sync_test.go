@@ -12,6 +12,71 @@ import (
 	"github.com/dpdanpittman/tribunal/internal/ledger"
 )
 
+// TestMatchDuplicate_CommitErrorParsing verifies the regex that drives
+// post-broadcast batch recovery actually extracts the finding_id out of
+// the contract's `FindingAlreadyCommitted` / `FindingAlreadyResolved`
+// errors. If this regex drifts and these tests don't catch it, sync's
+// recovery layer silently degrades to "give up on the whole batch" —
+// which is exactly the v0.3.2 defect F-NEW-301 surfaced.
+func TestMatchDuplicate_CommitErrorParsing(t *testing.T) {
+	tests := []struct {
+		name    string
+		errMsg  string
+		re      string
+		wantID  string
+		wantOK  bool
+	}{
+		{
+			name:   "already committed plain",
+			errMsg: "commit batch (plan=P-1, n=2): wait for inclusion: tx failed on-chain (code=18): finding P-1/F-99 already committed",
+			re:     "commit",
+			wantID: "F-99",
+			wantOK: true,
+		},
+		{
+			name:   "already committed with dotted hash",
+			errMsg: "commit batch: finding P-abc/F-sec.201 already committed",
+			re:     "commit",
+			wantID: "F-sec.201",
+			wantOK: true,
+		},
+		{
+			name:   "already resolved",
+			errMsg: "resolve batch (plan=P-7, n=1): tx failed on-chain: finding P-7/F-1 already resolved",
+			re:     "resolve",
+			wantID: "F-1",
+			wantOK: true,
+		},
+		{
+			name:   "unrelated error, no match",
+			errMsg: "account sequence mismatch, expected 4, got 3",
+			re:     "commit",
+			wantOK: false,
+		},
+		{
+			name:   "wrong regex against committed message",
+			errMsg: "finding P-1/F-1 already committed",
+			re:     "resolve",
+			wantOK: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var re = alreadyCommittedRE
+			if tt.re == "resolve" {
+				re = alreadyResolvedRE
+			}
+			gotID, gotOK := matchDuplicate(tt.errMsg, re)
+			if gotOK != tt.wantOK {
+				t.Fatalf("ok=%v want=%v (id=%q errMsg=%q)", gotOK, tt.wantOK, gotID, tt.errMsg)
+			}
+			if gotID != tt.wantID {
+				t.Fatalf("id=%q want=%q", gotID, tt.wantID)
+			}
+		})
+	}
+}
+
 // stubKeyResolver maps canonical pubkeys to keypairs without touching disk.
 type stubKeyResolver map[string]*agent.Keypair
 

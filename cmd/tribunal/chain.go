@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -15,16 +14,6 @@ import (
 	"github.com/dpdanpittman/tribunal/internal/chain"
 	"github.com/dpdanpittman/tribunal/internal/ledger"
 )
-
-// normalizeRPCScheme rewrites Tendermint-style tcp:// URLs to http://.
-// Go's net/http client does not accept tcp://; xiond accepts both. Returns
-// the (possibly-rewritten) URL and whether it was changed.
-func normalizeRPCScheme(rpc string) (string, bool) {
-	if strings.HasPrefix(rpc, "tcp://") {
-		return "http://" + strings.TrimPrefix(rpc, "tcp://"), true
-	}
-	return rpc, false
-}
 
 // newChainCmd is the root for every on-chain operation. v0.3-only —
 // fully ignorable for v0.1/v0.2 workflows.
@@ -58,7 +47,7 @@ func newChainInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Write ~/.tribunal/chain.yaml with the given chain + contract config",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if rewritten, changed := normalizeRPCScheme(cfg.NodeRPC); changed {
+			if rewritten, changed := chain.NormalizeRPCScheme(cfg.NodeRPC); changed {
 				fmt.Fprintf(os.Stderr,
 					"tribunal: rewriting --node-rpc %q -> %q (Go HTTP client requires http://; xiond accepts both)\n",
 					cfg.NodeRPC, rewritten)

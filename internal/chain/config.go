@@ -10,9 +10,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// NormalizeRPCScheme rewrites Tendermint-style `tcp://...` URLs to
+// `http://...`. xiond accepts `tcp://` for its --node flag (it's the
+// long-standing Tendermint convention) but Go's net/http client does
+// not. Called from both `tribunal chain init` (writing a fresh config)
+// and LoadConfig (so configs written before v0.3.2 normalize on read).
+// Returns the (possibly-rewritten) URL and whether it was changed.
+func NormalizeRPCScheme(rpc string) (string, bool) {
+	if strings.HasPrefix(rpc, "tcp://") {
+		return "http://" + strings.TrimPrefix(rpc, "tcp://"), true
+	}
+	return rpc, false
+}
 
 // Config is the persistent chain configuration. Lives at ~/.tribunal/chain.yaml.
 // All fields are required for any chain operation except OutcomeRewardMultiplier
@@ -64,6 +78,12 @@ func LoadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	// Normalize legacy tcp:// URLs on read so configs written before v0.3.2
+	// don't break the Go HTTP client. Silent rewrite — log handled at the
+	// `chain init` boundary; LoadConfig is too quiet a path for stderr noise.
+	if normalized, changed := NormalizeRPCScheme(cfg.NodeRPC); changed {
+		cfg.NodeRPC = normalized
+	}
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -81,9 +101,13 @@ func (c *Config) applyDefaults() {
 	if c.GasAdjustment == "" {
 		c.GasAdjustment = "1.4"
 	}
-	if c.OutcomeRewardMultiplier == 0 {
-		c.OutcomeRewardMultiplier = 2
-	}
+	// NOTE: OutcomeRewardMultiplier is intentionally NOT defaulted here.
+	// A genuine contract value of 0 is a legitimate config — it means the
+	// contract pays back only the staked amount with no extra outcome
+	// reward. Auto-defaulting 0→2 in v0.3.2 silently overrode F6's whole
+	// reason for being (query the deployed contract). Operators who want
+	// a non-zero multiplier should pass it through `tribunal chain init`,
+	// which fetches the real value from the contract.
 }
 
 func (c *Config) validate() error {

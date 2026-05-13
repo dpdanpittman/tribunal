@@ -2,7 +2,13 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/dpdanpittman/tribunal/internal/agent"
 	"github.com/dpdanpittman/tribunal/internal/ledger"
@@ -23,8 +29,13 @@ type KeyResolver interface {
 //  1. Drain any queued real-time commits for this plan into the batch.
 //  2. Translate every Finding + Resolution in the ledger for the plan into
 //     the contract wire format.
-//  3. Submit one CommitFindingBatch and one ResolveFindingBatch per plan.
-//     Either may be empty, in which case the corresponding tx is skipped.
+//  3. Pre-flight chain queries (parallel, bounded) to skip entries that
+//     are already on-chain. Fast path for normal retries.
+//  4. Submit batched CommitFindingBatch and ResolveFindingBatch via
+//     submitCommitBatch / submitResolveBatch, which absorb pre-flight
+//     false-negatives by parsing the contract's `FindingAlreadyCommitted`
+//     / `FindingAlreadyResolved` errors and retrying the batch with the
+//     offending entry dropped.
 type Sync struct {
 	Client *Client
 	Keys   KeyResolver
@@ -40,6 +51,11 @@ type SyncResult struct {
 	ResolveTxHash     string
 	QueueDrainedCount int
 }
+
+// preflightConcurrency caps the number of in-flight LCD pre-flight queries.
+// Keeps a large batch (say 100 findings) from saturating the LCD while
+// still cutting latency significantly vs. the serial approach in v0.3.2.
+const preflightConcurrency = 8
 
 // CommitRealtime submits a single FindingCommit immediately and, on
 // failure, persists the message to the retry queue so plan-close sync
@@ -83,13 +99,12 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 		result.QueueDrainedCount = len(drained)
 	}
 
-	// Pre-flight: query the chain for state of each finding in this plan.
+	// Pre-flight: parallel chain queries for each finding in this plan.
 	// Findings already committed are skipped on the commit side; findings
-	// already resolved are skipped on the resolve side. This makes sync
-	// idempotent — retrying after a partial failure no longer dies with
-	// "already committed".
-	committedOnChain := map[string]bool{}
-	resolvedOnChain := map[string]bool{}
+	// already resolved are skipped on the resolve side. Pre-flight errors
+	// are tolerated here because submitCommitBatch / submitResolveBatch
+	// absorb the resulting "already committed" / "already resolved" errors
+	// from the contract — F5's idempotency is two-layered in v0.3.3.
 	checkIDs := map[string]struct{}{}
 	for _, f := range findings {
 		if f.PlanID == planID {
@@ -106,35 +121,22 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			checkIDs[q.Msg.CommitFinding.FindingID] = struct{}{}
 		}
 	}
-	for id := range checkIDs {
-		resp, err := s.Client.Finding(ctx, planID, id)
-		if err != nil {
-			// Don't fail the whole sync if a single pre-flight query
-			// errors — fall back to "unknown" (treat as not committed)
-			// and let the contract's own duplicate guard be the final
-			// authority. This keeps sync resilient to flaky REST.
-			continue
-		}
-		if resp.Finding == nil {
-			continue
-		}
-		committedOnChain[id] = true
-		if resp.Finding.Resolution != nil {
-			resolvedOnChain[id] = true
-		}
+	committedOnChain, resolvedOnChain := s.preflight(ctx, planID, checkIDs)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("pre-flight cancelled: %w", ctxErr)
 	}
 
 	// Build commits (skip findings already on-chain).
 	var commits []FindingCommit
-	seen := map[string]struct{}{}
+	seenCommit := map[string]struct{}{}
 	for _, f := range findings {
 		if f.PlanID != planID {
 			continue
 		}
-		if _, dup := seen[f.FindingID]; dup {
+		if _, dup := seenCommit[f.FindingID]; dup {
 			continue
 		}
-		seen[f.FindingID] = struct{}{}
+		seenCommit[f.FindingID] = struct{}{}
 		if committedOnChain[f.FindingID] {
 			continue
 		}
@@ -148,27 +150,31 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 		}
 		commits = append(commits, *commit)
 	}
-	// Fold in queue entries that are commits (also skip if already on-chain).
 	for _, q := range queued {
 		if q.Msg == nil || q.Msg.CommitFinding == nil {
 			continue
 		}
-		if _, dup := seen[q.Msg.CommitFinding.FindingID]; dup {
+		if _, dup := seenCommit[q.Msg.CommitFinding.FindingID]; dup {
 			continue
 		}
-		seen[q.Msg.CommitFinding.FindingID] = struct{}{}
+		seenCommit[q.Msg.CommitFinding.FindingID] = struct{}{}
 		if committedOnChain[q.Msg.CommitFinding.FindingID] {
 			continue
 		}
 		commits = append(commits, *q.Msg.CommitFinding)
 	}
 
-	// Build resolutions (skip ones already resolved on-chain).
+	// Build resolutions (dedup + skip ones already resolved on-chain).
 	var resCommits []ResolutionCommit
+	seenResolve := map[string]struct{}{}
 	for _, r := range resolutions {
 		if r.PlanID != planID {
 			continue
 		}
+		if _, dup := seenResolve[r.FindingID]; dup {
+			continue
+		}
+		seenResolve[r.FindingID] = struct{}{}
 		if resolvedOnChain[r.FindingID] {
 			continue
 		}
@@ -184,31 +190,220 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 	}
 
 	if len(commits) > 0 {
-		msg := &ExecuteMsg{CommitFindingBatch: &CommitBatchMsg{PlanID: planID, Findings: commits}}
-		br, err := s.Client.Execute(ctx, msg)
+		br, sent, err := s.submitCommitBatch(ctx, planID, commits)
 		if err != nil {
 			return nil, fmt.Errorf("commit batch (plan=%s, n=%d): %w", planID, len(commits), err)
 		}
-		result.FindingsSent = len(commits)
-		result.CommitTxHash = br.TxHash
+		result.FindingsSent = sent
+		if br != nil {
+			result.CommitTxHash = br.TxHash
+		}
 	}
 
 	if len(resCommits) > 0 {
-		msg := &ExecuteMsg{ResolveFindingBatch: &ResolveBatchMsg{PlanID: planID, Resolutions: resCommits}}
-		br, err := s.Client.Execute(ctx, msg)
+		br, sent, err := s.submitResolveBatch(ctx, planID, resCommits)
 		if err != nil {
 			return nil, fmt.Errorf("resolve batch (plan=%s, n=%d): %w", planID, len(resCommits), err)
 		}
-		result.ResolutionsSent = len(resCommits)
-		result.ResolveTxHash = br.TxHash
+		result.ResolutionsSent = sent
+		if br != nil {
+			result.ResolveTxHash = br.TxHash
+		}
 	}
 
 	return result, nil
 }
 
+// preflight queries the chain in parallel (bounded fan-out) for the state
+// of each finding ID. Per-query errors are tolerated — they fall through
+// to submitCommitBatch / submitResolveBatch which absorb the resulting
+// duplicate-rejection errors from the contract. After progress-threshold
+// elapses, emits a stderr note so operators see the loop is alive.
+func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]struct{}) (committed, resolved map[string]bool) {
+	committed = map[string]bool{}
+	resolved = map[string]bool{}
+	if len(ids) == 0 {
+		return
+	}
+
+	type result struct {
+		id        string
+		committed bool
+		resolved  bool
+	}
+
+	idCh := make(chan string, len(ids))
+	for id := range ids {
+		idCh <- id
+	}
+	close(idCh)
+
+	resCh := make(chan result, len(ids))
+	var wg sync.WaitGroup
+	workers := preflightConcurrency
+	if len(ids) < workers {
+		workers = len(ids)
+	}
+
+	start := time.Now()
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for id := range idCh {
+				if ctx.Err() != nil {
+					return
+				}
+				attemptCtx, cancel := context.WithTimeout(ctx, preflightAttemptTimeout)
+				resp, err := s.Client.Finding(attemptCtx, planID, id)
+				cancel()
+				if err != nil || resp == nil || resp.Finding == nil {
+					resCh <- result{id: id}
+					continue
+				}
+				resCh <- result{id: id, committed: true, resolved: resp.Finding.Resolution != nil}
+			}
+		}()
+	}
+
+	// Progress signal for slow LCDs.
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(waitProgressInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				fmt.Fprintf(os.Stderr, "tribunal: still pre-flighting plan=%s (elapsed=%s, ids=%d)\n",
+					planID, time.Since(start).Round(time.Second), len(ids))
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(resCh)
+	close(done)
+
+	for r := range resCh {
+		if r.committed {
+			committed[r.id] = true
+		}
+		if r.resolved {
+			resolved[r.id] = true
+		}
+	}
+	return
+}
+
+// alreadyCommittedRE captures the contract's FindingAlreadyCommitted error
+// payload so the recovery layer can identify which finding to drop.
+var alreadyCommittedRE = regexp.MustCompile(`finding ([^/]+)/([^ ]+) already committed`)
+
+// alreadyResolvedRE captures the contract's FindingAlreadyResolved error.
+var alreadyResolvedRE = regexp.MustCompile(`finding ([^/]+)/([^ ]+) already resolved`)
+
+// submitCommitBatch posts a commit_finding_batch and, on
+// "FindingAlreadyCommitted" rejection, drops the offending entry and
+// retries. Bounded by len(commits) retries (each retry guarantees at
+// least one entry leaves the batch), so termination is guaranteed.
+//
+// Returns the final broadcast result, the count of findings actually
+// committed (excludes dropped duplicates), and an error if the batch
+// could not be made to land for some reason other than duplicate
+// rejection.
+func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []FindingCommit) (*BroadcastResult, int, error) {
+	originalLen := len(commits)
+	for attempt := 0; attempt <= originalLen; attempt++ {
+		if len(commits) == 0 {
+			// Everything in the batch was already on-chain. No tx needed.
+			return nil, 0, nil
+		}
+		msg := &ExecuteMsg{CommitFindingBatch: &CommitBatchMsg{PlanID: planID, Findings: commits}}
+		br, err := s.Client.Execute(ctx, msg)
+		if err == nil {
+			return br, len(commits), nil
+		}
+		dupID, ok := matchDuplicate(err.Error(), alreadyCommittedRE)
+		if !ok {
+			return br, 0, err
+		}
+		filtered := commits[:0]
+		for _, c := range commits {
+			if c.FindingID != dupID {
+				filtered = append(filtered, c)
+			}
+		}
+		if len(filtered) == len(commits) {
+			// Contract reported a duplicate not in our batch. Bail loudly.
+			return br, 0, fmt.Errorf("contract reported duplicate commit %q not in batch: %w", dupID, err)
+		}
+		fmt.Fprintf(os.Stderr, "tribunal: commit batch recovered from duplicate %s/%s, retrying with %d findings\n",
+			planID, dupID, len(filtered))
+		commits = filtered
+	}
+	return nil, 0, fmt.Errorf("commit batch exhausted recovery attempts (started=%d)", originalLen)
+}
+
+// submitResolveBatch is the resolution-side equivalent of submitCommitBatch.
+// Absorbs FindingAlreadyResolved rejections by dropping the offending entry
+// and retrying. Bounded by len(resCommits) retries.
+func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits []ResolutionCommit) (*BroadcastResult, int, error) {
+	originalLen := len(resCommits)
+	for attempt := 0; attempt <= originalLen; attempt++ {
+		if len(resCommits) == 0 {
+			return nil, 0, nil
+		}
+		msg := &ExecuteMsg{ResolveFindingBatch: &ResolveBatchMsg{PlanID: planID, Resolutions: resCommits}}
+		br, err := s.Client.Execute(ctx, msg)
+		if err == nil {
+			return br, len(resCommits), nil
+		}
+		dupID, ok := matchDuplicate(err.Error(), alreadyResolvedRE)
+		if !ok {
+			return br, 0, err
+		}
+		filtered := resCommits[:0]
+		for _, r := range resCommits {
+			if r.FindingID != dupID {
+				filtered = append(filtered, r)
+			}
+		}
+		if len(filtered) == len(resCommits) {
+			return br, 0, fmt.Errorf("contract reported duplicate resolution %q not in batch: %w", dupID, err)
+		}
+		fmt.Fprintf(os.Stderr, "tribunal: resolve batch recovered from duplicate %s/%s, retrying with %d resolutions\n",
+			planID, dupID, len(filtered))
+		resCommits = filtered
+	}
+	return nil, 0, fmt.Errorf("resolve batch exhausted recovery attempts (started=%d)", originalLen)
+}
+
+// matchDuplicate inspects an error message for a known "already X"
+// pattern emitted by the contract and returns the offending finding_id.
+// The plan_id capture group is discarded — the caller knows the planID.
+func matchDuplicate(errMsg string, re *regexp.Regexp) (string, bool) {
+	m := re.FindStringSubmatch(errMsg)
+	if len(m) != 3 {
+		return "", false
+	}
+	// Strip any trailing characters from finding_id that the regex's
+	// "[^ ]+" greedily captured but that aren't actually part of the ID
+	// (e.g. wrapping quotes or punctuation in the xiond error text).
+	fid := strings.TrimRight(m[2], "\"',;.)")
+	return fid, fid != ""
+}
+
 // SyncAll groups every entry in the ledger by plan_id and runs SyncPlan
 // per group. Returns one SyncResult per plan, in the order plans first
 // appear in the ledger.
+//
+// In v0.3.3 SyncAll continues past per-plan failures instead of aborting
+// — a single bad plan no longer blocks every subsequent plan from being
+// settled. The returned error wraps the per-plan errors via errors.Join;
+// the returned results slice carries the successful plans in their
+// original order.
 func (s *Sync) SyncAll(ctx context.Context, lg *ledger.Ledger) ([]*SyncResult, error) {
 	findings, resolutions, err := lg.All()
 	if err != nil {
@@ -234,12 +429,17 @@ func (s *Sync) SyncAll(ctx context.Context, lg *ledger.Ledger) ([]*SyncResult, e
 	}
 
 	var out []*SyncResult
+	var errs []error
 	for _, planID := range planOrder {
 		res, err := s.SyncPlan(ctx, planID, planFindings[planID], planResolutions[planID])
 		if err != nil {
-			return out, err
+			errs = append(errs, fmt.Errorf("plan %s: %w", planID, err))
+			continue
 		}
 		out = append(out, res)
+	}
+	if len(errs) > 0 {
+		return out, errors.Join(errs...)
 	}
 	return out, nil
 }

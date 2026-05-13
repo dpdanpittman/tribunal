@@ -2,13 +2,20 @@
 // chain settlement path. It seeds the local ledger with one signed finding
 // and one signed resolution, then exits. After running, invoke
 // `tribunal chain sync` to flush the entries on-chain.
+//
+// Refuses to run against a chain whose chain_id doesn't look like a
+// dev/test environment unless --allow-prod is passed. Catches the failure
+// mode where chain.yaml accidentally points at mainnet and the harness
+// signs a fake true_positive resolution against a real reputation balance.
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
-	"os"
+	"strings"
+	"time"
 
 	"github.com/dpdanpittman/tribunal/internal/agent"
 	"github.com/dpdanpittman/tribunal/internal/chain"
@@ -16,13 +23,17 @@ import (
 )
 
 func main() {
-	advLabel := "adversary-alpha"
-	pmLabel := "pm-alpha"
-	planID := "P-e2e-001"
+	var planID, advLabel, pmLabel string
+	var send, allowProd bool
+	var execTimeout time.Duration
 
-	if len(os.Args) > 1 {
-		planID = os.Args[1]
-	}
+	flag.StringVar(&planID, "plan", "P-e2e-001", "plan id to use for the seeded finding + resolution")
+	flag.StringVar(&advLabel, "adversary", "adversary-alpha", "agent label of the filer (must exist in ~/.tribunal/agents)")
+	flag.StringVar(&pmLabel, "pm", "pm-alpha", "agent label of the resolver (must exist in ~/.tribunal/agents)")
+	flag.BoolVar(&send, "send", false, "after writing to the local ledger, also fire the resolution on-chain via the configured chain client")
+	flag.BoolVar(&allowProd, "allow-prod", false, "permit --send against a non-test-looking chain_id. Default rejects mainnet-like configs to prevent accidentally signing a fake TP against real reputation stake.")
+	flag.DurationVar(&execTimeout, "timeout", 60*time.Second, "ctx timeout for the on-chain Execute when --send is set")
+	flag.Parse()
 
 	root, err := agent.DefaultRoot()
 	if err != nil {
@@ -32,11 +43,11 @@ func main() {
 
 	advKP, err := reg.LoadKeypair(advLabel)
 	if err != nil {
-		log.Fatalf("load adversary key: %v", err)
+		log.Fatalf("load adversary key %q: %v", advLabel, err)
 	}
 	pmKP, err := reg.LoadKeypair(pmLabel)
 	if err != nil {
-		log.Fatalf("load pm key: %v", err)
+		log.Fatalf("load pm key %q: %v", pmLabel, err)
 	}
 
 	lg := ledger.New(ledger.DefaultPath("."))
@@ -77,13 +88,6 @@ func main() {
 	}
 	fmt.Printf("appended resolution for %s outcome=%s\n", r.FindingID, r.Outcome)
 
-	// If --send is the next arg, also fire the resolution on-chain right now.
-	send := false
-	for _, a := range os.Args[1:] {
-		if a == "--send" {
-			send = true
-		}
-	}
 	if !send {
 		return
 	}
@@ -92,8 +96,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("load chain config: %v", err)
 	}
-	cli := chain.New(cfg)
 
+	if !looksLikeTestChain(cfg.ChainID) && !allowProd {
+		log.Fatalf("tribunal-seed refusing to --send against chain_id=%q (looks like production). Pass --allow-prod to override, or point ~/.tribunal/chain.yaml at a devnet/testnet first.", cfg.ChainID)
+	}
+
+	cli := chain.New(cfg)
 	rc, err := chain.BuildResolutionCommit(r, pmKP)
 	if err != nil {
 		log.Fatalf("build resolution commit: %v", err)
@@ -102,9 +110,21 @@ func main() {
 		PlanID:      planID,
 		Resolutions: []chain.ResolutionCommit{*rc},
 	}}
-	res, err := cli.Execute(context.Background(), exec)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+	res, err := cli.Execute(ctx, exec)
 	if err != nil {
 		log.Fatalf("execute: %v", err)
 	}
 	fmt.Printf("resolve_finding_batch tx: %s\n", res.TxHash)
+}
+
+// looksLikeTestChain mirrors the same heuristic the chain.Client warning
+// uses. Mainnet-like chain ids are refused unless --allow-prod is set.
+func looksLikeTestChain(chainID string) bool {
+	id := strings.ToLower(chainID)
+	return strings.Contains(id, "devnet") ||
+		strings.Contains(id, "testnet") ||
+		strings.Contains(id, "test") ||
+		strings.Contains(id, "local")
 }

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-05-13
+
+Audit-driven fix release. v0.3.2 itself was reviewed by the full Tribunal methodology — three lens reviewers (architecture, security, performance) plus an adversary panel — and the audit surfaced 3 Critical + 12 Warning defects that the manual e2e couldn't have caught. v0.3.3 fixes the Critical findings, every Warning that affects correctness or operator safety, and the cross-corpus blind spot the adversary alone identified. No contract changes; no migration. Audit report at `.tribunal/reports/P-v032-audit/SYNTHESIS.md`.
+
+### Fixed
+
+- **`WaitForTx` now distinguishes transient HTTP errors from terminal ones.** v0.3.2's wait loop bailed on the first non-404 error, defeating F4's stated goal — a single LCD blip or network reset would surface as a fatal failure even though the tx was in flight. v0.3.3 absorbs 5xx, connection-refused, timeout, and partial-body parse errors as transients (continues polling); 4xx other than 404 are terminal; on-chain `code != 0` is terminal. Each individual REST poll is now bounded by a 3s per-attempt timeout (the one v0.3.2's docstring already lied about) so a slow LCD can't starve the outer ctx. ([F-ARCH/SEC/PERF-201, F-SEC-202, F-PERF-202])
+- **`Execute` propagates the `BroadcastResult` on `WaitForTx` error.** v0.3.2 returned non-nil `(res, err)` but every caller discarded `res`, losing the txhash for a tx that may have actually landed. Documented the contract explicitly in the function's docstring; callers can now resume polling or surface the on-chain status to the operator. ([F-NEW-302])
+- **`SyncPlan` absorbs batched-tx atomicity failures via post-broadcast recovery.** The adversary's headline finding: v0.3.2's pre-flight tolerance breaks under CosmWasm batched-tx atomicity. The contract uses Rust's `?` operator, so a single already-committed finding short-circuits the entire `commit_finding_batch` — a 100-finding plan loses all 100 commits to one LCD false-negative. v0.3.3 keeps pre-flight as the fast path and adds a recovery layer: when a batch tx fails with `FindingAlreadyCommitted` (or `FindingAlreadyResolved` for resolutions), parse the offending finding ID, drop it from the batch, retry. Bounded by `len(batch)` retries (each retry guarantees one entry leaves), so termination is guaranteed. New unit test `TestMatchDuplicate_CommitErrorParsing` pins the regex against the contract's actual error strings. ([F-NEW-301, F-NEW-305])
+- **Sync pre-flight is now parallel and bounded.** v0.3.2's pre-flight was N serial REST round-trips; at 100 findings that dominated sync wall time. v0.3.3 fans out 8 concurrent workers, each with a 3s per-attempt timeout. ([F-ARCH-203, F-PERF-203, F-SEC-203, F-SEC-204])
+- **Sync respects `ctx.Err()` between pre-flight iterations.** v0.3.2's `continue` swallowed ctx cancellation, letting sync keep running after the caller had given up. ([F-ARCH-202])
+- **Sync deduplicates resolutions.** Commits already had `seen[]` dedup; resolutions did not, so a ledger with a duplicate resolution would trigger `FindingAlreadyResolved` on the second one and revert the whole batch (caught now by the recovery layer, but cheaper to filter upfront). ([F-NEW-304])
+- **`SyncAll` collects per-plan errors instead of aborting on the first.** A bad plan no longer prevents every subsequent plan from being settled. Returns successful results plus an `errors.Join`-wrapped error. ([F-NEW-303])
+- **Wait loop and sync pre-flight now emit progress notes.** After 5s without resolution, both surfaces print a one-line stderr update with elapsed time + transient-error streak (for WaitForTx) or in-flight count (for pre-flight). Operators no longer stare at multi-minute hangs with zero signal. ([F-PERF-204])
+- **`NormalizeRPCScheme` moved into `internal/chain/config.go` and called from `LoadConfig`.** v0.3.2 normalized `tcp://` → `http://` only at `chain init` write time; configs written before v0.3.2 (or by hand) kept their broken scheme and surfaced "unsupported protocol scheme" on every chain operation. Now normalization happens transparently on every config load. ([F-ARCH-204])
+- **`outcome_reward_multiplier` is no longer auto-defaulted to 2.** v0.3.2's `applyDefaults` overrode any explicit 0 to 2, defeating F6 (which queries the contract for the real value) whenever the contract was instantiated with multiplier 0. A genuine 0 is a legitimate config — it means the contract returns stake without an outcome bonus. ([F-ARCH-205])
+- **`tribunal-seed` now uses `flag` properly + ctx timeout + production-chain guard.** v0.3.2's argv parsing treated `--send` as a plan id; v0.3.3 uses `flag.Parse()`. The `--send` path now wraps Execute in a configurable timeout (default 60s) instead of `context.Background()`. New `--allow-prod` opt-out: by default the harness refuses to `--send` against a non-test-looking `chain_id`, preventing accidental fake-TP settlements against real reputation stake. ([F-ARCH-206, F-PERF-205, F-SEC-207])
+
+### Tests
+
+- New `TestMatchDuplicate_CommitErrorParsing` in `internal/chain/sync_test.go` covering the regex that drives batch recovery.
+
 ## [0.3.2] — 2026-05-13
 
 Devnet-driven tooling release. The contract itself shipped clean in v0.3.1 — every audit fix verified end-to-end against a live `xion-devnet-1` chain (`wasmd v0.54.0`, `xiond v20.0.0`). What didn't ship clean was the deploy + sync tooling around it. v0.3.2 fixes six defects surfaced by the first real-chain test run. No contract changes; no migration required. Test-run report at `.tribunal/reports/devnet-e2e-2026-05-13.md`.

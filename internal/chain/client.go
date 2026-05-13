@@ -72,6 +72,21 @@ type BroadcastResult struct {
 	RawLog string `json:"raw_log"`
 }
 
+// fetchTxAttemptTimeout caps each individual REST poll. Picked short so
+// a slow / hostile LCD can't starve sync's overall ctx budget — sync's
+// outer ctx is typically minutes, but a single poll shouldn't be allowed
+// to consume more than a couple seconds of it.
+const fetchTxAttemptTimeout = 3 * time.Second
+
+// preflightAttemptTimeout caps a single pre-flight chain query in sync.
+// Same reasoning as fetchTxAttemptTimeout — bounded LCD-DoS surface.
+const preflightAttemptTimeout = 3 * time.Second
+
+// waitProgressInterval is the threshold at which WaitForTx and sync's
+// pre-flight start emitting stderr progress notes so operators see the
+// loop is alive during multi-second waits.
+const waitProgressInterval = 5 * time.Second
+
 // Execute submits the given ExecuteMsg to the contract via `xiond tx wasm
 // execute` and waits for the tx to be included in a block. Returns the
 // broadcast result with on-chain status (code, raw_log) filled in.
@@ -82,6 +97,12 @@ type BroadcastResult struct {
 // REST tx endpoint here makes sequential Executes safe.
 //
 // The caller-supplied ctx bounds the entire round-trip including the wait.
+//
+// IMPORTANT: when an error is returned, the *BroadcastResult may still be
+// non-nil with a valid TxHash. The tx may have broadcast successfully but
+// failed during the wait stage (transient or terminal). Callers must check
+// res != nil and the txhash even on error so they can resume polling or
+// surface the on-chain status to the operator.
 func (c *Client) Execute(ctx context.Context, msg *ExecuteMsg) (*BroadcastResult, error) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
@@ -115,67 +136,102 @@ func (c *Client) Execute(ctx context.Context, msg *ExecuteMsg) (*BroadcastResult
 		return &res, fmt.Errorf("xiond returned empty txhash; raw output=%q", string(out))
 	}
 	if err := c.WaitForTx(ctx, res.TxHash); err != nil {
-		return &res, fmt.Errorf("wait for inclusion: %w", err)
+		return &res, fmt.Errorf("wait for inclusion (txhash=%s): %w", res.TxHash, err)
 	}
 	return &res, nil
 }
 
-// WaitForTx polls the REST tx endpoint until the given hash is found or
-// ctx is cancelled. Returns an error if the tx is found but failed
-// (on-chain code != 0). The default per-attempt timeout is short
-// (300ms) and the poll cadence is 1s; the function gives up only when
-// ctx is done. For headless callers without an explicit ctx, wrap the
-// call in context.WithTimeout(parent, 30*time.Second) or similar.
+// WaitForTx polls the REST tx endpoint until the given hash is found,
+// the tx fails on-chain, or ctx is cancelled. Each individual REST poll
+// is bounded by fetchTxAttemptTimeout so a hostile / slow LCD can't
+// starve the caller's overall ctx budget. Transient errors (network blip,
+// connection refused, 5xx, parse failure on a partial body) are absorbed
+// and the loop continues — the whole point of the wait is to be resilient
+// to broadcast→inclusion gaps. Terminal errors (4xx other than 404,
+// on-chain code != 0) propagate immediately. After waitProgressInterval
+// without resolution, the loop emits a one-line stderr note so operators
+// see the wait is alive.
 func (c *Client) WaitForTx(ctx context.Context, txhash string) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	start := time.Now()
+	lastProgress := start
+	var transientStreak int
 
 	for {
-		ok, code, log, err := c.fetchTx(ctx, txhash)
+		ok, code, log, terminal, err := c.fetchTx(ctx, txhash)
 		if err != nil {
-			return err
-		}
-		if ok {
+			if terminal {
+				return err
+			}
+			// Transient: keep polling. Count consecutive transients so an
+			// LCD that's been broken for the full ctx surfaces something
+			// useful in the timeout error.
+			transientStreak++
+		} else if ok {
 			if code != 0 {
 				return fmt.Errorf("tx %s failed on-chain (code=%d): %s", txhash, code, log)
 			}
 			return nil
+		} else {
+			transientStreak = 0
 		}
+
+		if since := time.Since(lastProgress); since >= waitProgressInterval {
+			fmt.Fprintf(os.Stderr, "tribunal: still waiting on tx %s (elapsed=%s, transient_streak=%d)\n",
+				txhash, time.Since(start).Round(time.Second), transientStreak)
+			lastProgress = time.Now()
+		}
+
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("tx %s not included before context done: %w", txhash, ctx.Err())
+			return fmt.Errorf("tx %s not included before context done (elapsed=%s, transient_streak=%d): %w",
+				txhash, time.Since(start).Round(time.Second), transientStreak, ctx.Err())
 		case <-ticker.C:
 			// poll again
 		}
 	}
 }
 
-// fetchTx returns (found, code, raw_log, err). A 404 from the REST
-// endpoint means "tx not yet indexed" and is reported as found=false, not
-// an error.
-func (c *Client) fetchTx(ctx context.Context, txhash string) (bool, int, string, error) {
-	u, err := url.JoinPath(c.cfg.NodeREST, "cosmos", "tx", "v1beta1", "txs", txhash)
-	if err != nil {
-		return false, 0, "", err
+// fetchTx returns (found, code, raw_log, terminal, err). A 404 from the
+// REST endpoint means "tx not yet indexed" and is reported as found=false
+// with no error. Transient HTTP errors (5xx, connection refused, timeout,
+// parse failure on a partial body) are returned with terminal=false so
+// the caller absorbs them and keeps polling. 4xx other than 404 are
+// returned with terminal=true.
+func (c *Client) fetchTx(ctx context.Context, txhash string) (found bool, code int, rawLog string, terminal bool, err error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, fetchTxAttemptTimeout)
+	defer cancel()
+
+	u, urlErr := url.JoinPath(c.cfg.NodeREST, "cosmos", "tx", "v1beta1", "txs", txhash)
+	if urlErr != nil {
+		return false, 0, "", true, urlErr
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return false, 0, "", err
+	req, reqErr := http.NewRequestWithContext(attemptCtx, http.MethodGet, u, nil)
+	if reqErr != nil {
+		return false, 0, "", true, reqErr
 	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return false, 0, "", fmt.Errorf("tx fetch http: %w", err)
+	resp, doErr := c.http.Do(req)
+	if doErr != nil {
+		// Network-layer error (refused, reset, timeout). Treat as transient.
+		return false, 0, "", false, fmt.Errorf("tx fetch http: %w", doErr)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, 0, "", err
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		// Body read failure mid-response. Transient.
+		return false, 0, "", false, readErr
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return false, 0, "", nil
+		return false, 0, "", false, nil
+	}
+	if resp.StatusCode >= 500 {
+		// LCD's own fault. Transient.
+		return false, 0, "", false, fmt.Errorf("tx fetch http %d: %s", resp.StatusCode, string(body))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, 0, "", fmt.Errorf("tx fetch http %d: %s", resp.StatusCode, string(body))
+		// 4xx other than 404. Terminal.
+		return false, 0, "", true, fmt.Errorf("tx fetch http %d: %s", resp.StatusCode, string(body))
 	}
 	var env struct {
 		TxResponse struct {
@@ -184,16 +240,20 @@ func (c *Client) fetchTx(ctx context.Context, txhash string) (bool, int, string,
 			Height string `json:"height"`
 		} `json:"tx_response"`
 	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return false, 0, "", fmt.Errorf("parse tx response: %w (body=%q)", err, string(body))
+	if jsonErr := json.Unmarshal(body, &env); jsonErr != nil {
+		// LCD returned 200 with a body we couldn't parse. Could be a
+		// partial response mid-write or a non-LCD endpoint masquerading
+		// as one. Treat as transient — a real LCD will produce parseable
+		// JSON on retry.
+		return false, 0, "", false, fmt.Errorf("parse tx response: %w (body=%q)", jsonErr, string(body))
 	}
 	// Some LCD implementations 200 with an empty payload while a tx is in
 	// limbo between mempool and indexing. Treat height=="" as "not yet
 	// indexed" so the caller keeps polling.
 	if env.TxResponse.Height == "" {
-		return false, 0, "", nil
+		return false, 0, "", false, nil
 	}
-	return true, env.TxResponse.Code, env.TxResponse.RawLog, nil
+	return true, env.TxResponse.Code, env.TxResponse.RawLog, false, nil
 }
 
 // Query executes a smart query against the contract via the LCD REST
