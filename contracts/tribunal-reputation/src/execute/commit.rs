@@ -3,9 +3,7 @@ use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 use crate::error::ContractError;
 use crate::msg::FindingCommit;
 use crate::state::{AgentRecord, FindingState, Severity, AGENTS, FINDINGS};
-use crate::validate::{
-    validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN,
-};
+use crate::validate::{validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN};
 
 /// `commit_finding` lands a single signed finding on-chain. Used for the
 /// real-time path (typically severity=critical) where waiting for the
@@ -48,11 +46,7 @@ pub fn commit_finding_batch(
         .add_attribute("count", count.to_string()))
 }
 
-fn process_finding(
-    deps: DepsMut,
-    env: Env,
-    f: FindingCommit,
-) -> Result<(), ContractError> {
+fn process_finding(deps: DepsMut, env: Env, f: FindingCommit) -> Result<(), ContractError> {
     validate_id_field("plan_id", &f.plan_id, MAX_ID_LEN)?;
     validate_id_field("finding_id", &f.finding_id, MAX_ID_LEN)?;
     validate_id_field("claim_hash", &f.claim_hash, MAX_HASH_LEN)?;
@@ -73,7 +67,7 @@ fn process_finding(
         return Err(ContractError::AgentRetired(agent.label.clone()));
     }
 
-    let severity = Severity::from_str(&f.severity)
+    let severity = Severity::parse(&f.severity)
         .ok_or_else(|| ContractError::InvalidSeverity(f.severity.clone()))?;
 
     let canonical = canonical_finding_message(
@@ -86,7 +80,11 @@ fn process_finding(
 
     let verified = deps
         .api
-        .ed25519_verify(&canonical, f.signature.as_slice(), f.agent_pubkey.as_slice())
+        .ed25519_verify(
+            &canonical,
+            f.signature.as_slice(),
+            f.agent_pubkey.as_slice(),
+        )
         .map_err(|_| ContractError::InvalidSignature)?;
     if !verified {
         return Err(ContractError::InvalidSignature);
@@ -99,12 +97,14 @@ fn process_finding(
             requested: f.stake.to_string(),
         });
     }
-    agent.balance = agent.balance.checked_sub(f.stake).map_err(|_| {
-        ContractError::InsufficientStake {
-            balance: agent.balance.to_string(),
-            requested: f.stake.to_string(),
-        }
-    })?;
+    agent.balance =
+        agent
+            .balance
+            .checked_sub(f.stake)
+            .map_err(|_| ContractError::InsufficientStake {
+                balance: agent.balance.to_string(),
+                requested: f.stake.to_string(),
+            })?;
     AGENTS.save(deps.storage, f.agent_pubkey.as_slice(), &agent)?;
 
     let state = FindingState {

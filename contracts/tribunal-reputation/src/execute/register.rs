@@ -14,6 +14,7 @@ const PUBKEY_LEN: usize = 32;
 /// - Label must not already be taken.
 /// - Role must parse to a known `Role` value.
 /// - Initial balance, if provided, must be >= 1.
+#[allow(clippy::too_many_arguments)]
 pub fn register_agent(
     deps: DepsMut,
     env: Env,
@@ -29,7 +30,7 @@ pub fn register_agent(
     }
     validate_id_field("label", &label, MAX_LABEL_LEN)?;
     validate_id_field("model_id", &model_id, MAX_MODEL_ID_LEN)?;
-    let role = Role::from_str(&role).ok_or(ContractError::InvalidRole(role.clone()))?;
+    let role = Role::parse(&role).ok_or(ContractError::InvalidRole(role.clone()))?;
 
     if AGENTS.has(deps.storage, pubkey.as_slice()) {
         return Err(ContractError::AgentAlreadyRegistered);

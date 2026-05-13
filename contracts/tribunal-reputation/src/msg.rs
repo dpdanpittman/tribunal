@@ -110,10 +110,7 @@ pub enum QueryMsg {
     AgentByLabel { label: String },
 
     /// Returns the finding state. None if not committed.
-    Finding {
-        plan_id: String,
-        finding_id: String,
-    },
+    Finding { plan_id: String, finding_id: String },
 
     /// Returns the top-N agents by current reputation balance.
     Leaderboard {

@@ -16,6 +16,7 @@ use crate::validate::{
 /// label lookups no longer resolve to a retired record. The retired
 /// `AgentRecord` itself (keyed by pubkey) is preserved with `retired_at`
 /// + `superseded_by` set, so the accountability trail survives.
+#[allow(clippy::too_many_arguments)]
 pub fn rotate_agent(
     deps: DepsMut,
     env: Env,

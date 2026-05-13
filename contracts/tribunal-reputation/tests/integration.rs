@@ -8,8 +8,8 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey, SECRET_KEY_LENGTH};
 
 use tribunal_reputation::contract;
 use tribunal_reputation::msg::{
-    AgentResp, ConfigResp, ExecuteMsg, FindingCommit, FindingResp, InstantiateMsg,
-    LeaderboardResp, QueryMsg, ReputationResp, ResolutionCommit,
+    AgentResp, ConfigResp, ExecuteMsg, FindingCommit, FindingResp, InstantiateMsg, LeaderboardResp,
+    QueryMsg, ReputationResp, ResolutionCommit,
 };
 
 const ADMIN: &str = "admin";
@@ -22,10 +22,7 @@ struct Keypair {
 
 impl Keypair {
     fn from_seed(seed_byte: u8) -> Self {
-        let mut seed = [0u8; SECRET_KEY_LENGTH];
-        for b in &mut seed {
-            *b = seed_byte;
-        }
+        let seed = [seed_byte; SECRET_KEY_LENGTH];
         let signing = SigningKey::from_bytes(&seed);
         let verifying: VerifyingKey = signing.verifying_key();
         Keypair {
@@ -95,7 +92,12 @@ fn canonical_finding(
     .into_bytes()
 }
 
-fn canonical_resolution(plan_id: &str, finding_id: &str, outcome: &str, evidence_hash: &str) -> Vec<u8> {
+fn canonical_resolution(
+    plan_id: &str,
+    finding_id: &str,
+    outcome: &str,
+    evidence_hash: &str,
+) -> Vec<u8> {
     format!(
         "TRIBUNAL_RESOLUTION|{}|{}|{}|{}",
         plan_id, finding_id, outcome, evidence_hash
@@ -202,7 +204,9 @@ fn commit_finding_happy_path_deducts_stake() {
     let severity = "critical";
     let claim_hash = "sha256:abc";
     let stake: u128 = 8;
-    let sig = kp.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let sig = kp.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
 
     let msg = ExecuteMsg::CommitFinding(FindingCommit {
         plan_id: plan_id.into(),
@@ -235,7 +239,9 @@ fn commit_finding_rejects_bad_signature() {
     let severity = "critical";
     let claim_hash = "h";
     let stake: u128 = 8;
-    let bad_sig = imposter.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let bad_sig = imposter.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
 
     let msg = ExecuteMsg::CommitFinding(FindingCommit {
         plan_id: plan_id.into(),
@@ -262,7 +268,9 @@ fn commit_finding_rejects_duplicate() {
     let severity = "warning";
     let claim_hash = "h";
     let stake: u128 = 4;
-    let sig = kp.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let sig = kp.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
     let f = FindingCommit {
         plan_id: plan_id.into(),
         finding_id: finding_id.into(),
@@ -288,7 +296,12 @@ fn commit_finding_rejects_duplicate() {
         )
         .unwrap_err();
     let msg = err.root_cause().to_string();
-    assert!(msg.to_lowercase().contains("already committed") || msg.to_lowercase().contains("already_committed"), "got: {}", msg);
+    assert!(
+        msg.to_lowercase().contains("already committed")
+            || msg.to_lowercase().contains("already_committed"),
+        "got: {}",
+        msg
+    );
 }
 
 #[test]
@@ -302,7 +315,9 @@ fn resolve_true_positive_returns_stake_plus_reward() {
     let severity = "critical";
     let claim_hash = "h";
     let stake: u128 = 8;
-    let sig = adv.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let sig = adv.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -322,7 +337,12 @@ fn resolve_true_positive_returns_stake_plus_reward() {
     // PM resolves as TP.
     let outcome = "true_positive";
     let evidence_hash = "evd";
-    let pm_sig = pm.sign(&canonical_resolution(plan_id, finding_id, outcome, evidence_hash));
+    let pm_sig = pm.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        outcome,
+        evidence_hash,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -359,7 +379,9 @@ fn resolve_false_positive_slashes_stake() {
     let severity = "warning";
     let claim_hash = "h";
     let stake: u128 = 4;
-    let sig = adv.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let sig = adv.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -378,7 +400,12 @@ fn resolve_false_positive_slashes_stake() {
 
     let outcome = "false_positive";
     let evidence_hash = "ev";
-    let pm_sig = pm.sign(&canonical_resolution(plan_id, finding_id, outcome, evidence_hash));
+    let pm_sig = pm.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        outcome,
+        evidence_hash,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -414,7 +441,9 @@ fn unauthorized_resolver_rejected() {
     let severity = "critical";
     let claim_hash = "h";
     let stake: u128 = 8;
-    let sig = adv.sign(&canonical_finding(plan_id, finding_id, severity, claim_hash, stake));
+    let sig = adv.sign(&canonical_finding(
+        plan_id, finding_id, severity, claim_hash, stake,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -433,7 +462,12 @@ fn unauthorized_resolver_rejected() {
 
     let outcome = "true_positive";
     let evidence_hash = "ev";
-    let bad_sig = imposter.sign(&canonical_resolution(plan_id, finding_id, outcome, evidence_hash));
+    let bad_sig = imposter.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        outcome,
+        evidence_hash,
+    ));
     let err = app
         .execute_contract(
             Addr::unchecked(ADMIN),
@@ -450,7 +484,11 @@ fn unauthorized_resolver_rejected() {
         )
         .unwrap_err();
     let msg = err.root_cause().to_string();
-    assert!(msg.to_lowercase().contains("unauthorized") || msg.to_lowercase().contains("resolver"), "got: {}", msg);
+    assert!(
+        msg.to_lowercase().contains("unauthorized") || msg.to_lowercase().contains("resolver"),
+        "got: {}",
+        msg
+    );
 }
 
 #[test]
@@ -466,7 +504,9 @@ fn batch_commit_and_resolve_per_plan() {
         let severity = "warning";
         let claim_hash = "h";
         let stake: u128 = 4;
-        let sig = adv.sign(&canonical_finding(plan_id, &fid, severity, claim_hash, stake));
+        let sig = adv.sign(&canonical_finding(
+            plan_id, &fid, severity, claim_hash, stake,
+        ));
         findings.push(FindingCommit {
             plan_id: plan_id.into(),
             finding_id: fid,
@@ -491,7 +531,12 @@ fn batch_commit_and_resolve_per_plan() {
     // 3 stakes of 4 deducted → 100 - 12 = 88.
     let rep: ReputationResp = app
         .wrap()
-        .query_wasm_smart(&contract, &QueryMsg::Reputation { pubkey: adv.pubkey.clone() })
+        .query_wasm_smart(
+            &contract,
+            &QueryMsg::Reputation {
+                pubkey: adv.pubkey.clone(),
+            },
+        )
         .unwrap();
     assert_eq!(rep.balance, Uint128::new(88));
 
@@ -499,7 +544,12 @@ fn batch_commit_and_resolve_per_plan() {
     let outcome = "true_positive";
     let mut resolutions = vec![];
     for f in &findings {
-        let sig = pm.sign(&canonical_resolution(&f.plan_id, &f.finding_id, outcome, "ev"));
+        let sig = pm.sign(&canonical_resolution(
+            &f.plan_id,
+            &f.finding_id,
+            outcome,
+            "ev",
+        ));
         resolutions.push(ResolutionCommit {
             plan_id: f.plan_id.clone(),
             finding_id: f.finding_id.clone(),
@@ -555,7 +605,12 @@ fn rotate_preserves_history_and_resets_balance() {
         &[],
     )
     .unwrap();
-    let pm_sig = pm.sign(&canonical_resolution(plan_id, finding_id, "true_positive", "ev"));
+    let pm_sig = pm.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        "true_positive",
+        "ev",
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -589,14 +644,27 @@ fn rotate_preserves_history_and_resets_balance() {
 
     let old_resp: AgentResp = app
         .wrap()
-        .query_wasm_smart(&contract, &QueryMsg::Agent { pubkey: old_kp.pubkey })
+        .query_wasm_smart(
+            &contract,
+            &QueryMsg::Agent {
+                pubkey: old_kp.pubkey,
+            },
+        )
         .unwrap();
-    assert!(old_resp.agent.retired_at.is_some(), "old agent should be retired");
+    assert!(
+        old_resp.agent.retired_at.is_some(),
+        "old agent should be retired"
+    );
     assert!(old_resp.agent.superseded_by.is_some());
 
     let new_resp: AgentResp = app
         .wrap()
-        .query_wasm_smart(&contract, &QueryMsg::Agent { pubkey: new_kp.pubkey })
+        .query_wasm_smart(
+            &contract,
+            &QueryMsg::Agent {
+                pubkey: new_kp.pubkey,
+            },
+        )
         .unwrap();
     // New balance is rotation_floor (10). TP history carried over (1).
     assert_eq!(new_resp.agent.balance, Uint128::new(10));
@@ -613,8 +681,15 @@ fn leaderboard_orders_by_balance_descending() {
     let pm = register(&mut app, &contract, "pm", "project-manager", 0x73);
 
     // Award `high` a TP (net +16), leave `mid` at 100, slash `low` by 4.
-    let mut commit_and_resolve = |kp: &Keypair, plan_id: &str, finding_id: &str, severity: &str, stake: u128, outcome: &str| {
-        let sig = kp.sign(&canonical_finding(plan_id, finding_id, severity, "h", stake));
+    let mut commit_and_resolve = |kp: &Keypair,
+                                  plan_id: &str,
+                                  finding_id: &str,
+                                  severity: &str,
+                                  stake: u128,
+                                  outcome: &str| {
+        let sig = kp.sign(&canonical_finding(
+            plan_id, finding_id, severity, "h", stake,
+        ));
         app.execute_contract(
             Addr::unchecked(ADMIN),
             contract.clone(),
@@ -681,7 +756,9 @@ fn finding_query_returns_committed_state() {
     let finding_id = "F-find";
     let severity = "warning";
     let stake: u128 = 4;
-    let sig = kp.sign(&canonical_finding(plan_id, finding_id, severity, "h", stake));
+    let sig = kp.sign(&canonical_finding(
+        plan_id, finding_id, severity, "h", stake,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),

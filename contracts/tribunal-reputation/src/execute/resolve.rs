@@ -3,9 +3,7 @@ use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, Uint128};
 use crate::error::ContractError;
 use crate::msg::ResolutionCommit;
 use crate::state::{AgentRecord, Outcome, ResolutionRecord, AGENTS, CONFIG, FINDINGS};
-use crate::validate::{
-    validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN,
-};
+use crate::validate::{validate_batch_size, validate_id_field, MAX_HASH_LEN, MAX_ID_LEN};
 
 /// `resolve_finding` settles a single finding. Returns / slashes stake +
 /// updates the filing agent's TP / FP counters.
@@ -47,11 +45,7 @@ pub fn resolve_finding_batch(
         .add_attribute("count", count.to_string()))
 }
 
-fn process_resolution(
-    deps: DepsMut,
-    env: Env,
-    r: ResolutionCommit,
-) -> Result<(), ContractError> {
+fn process_resolution(deps: DepsMut, env: Env, r: ResolutionCommit) -> Result<(), ContractError> {
     validate_id_field("plan_id", &r.plan_id, MAX_ID_LEN)?;
     validate_id_field("finding_id", &r.finding_id, MAX_ID_LEN)?;
     validate_id_field("evidence_hash", &r.evidence_hash, MAX_HASH_LEN)?;
@@ -67,7 +61,7 @@ fn process_resolution(
         return Err(ContractError::UnauthorizedResolver);
     }
 
-    let outcome = Outcome::from_str(&r.outcome)
+    let outcome = Outcome::parse(&r.outcome)
         .ok_or_else(|| ContractError::InvalidOutcome(r.outcome.clone()))?;
 
     // Verify resolver's signature over the canonical message.
@@ -75,7 +69,11 @@ fn process_resolution(
         canonical_resolution_message(&r.plan_id, &r.finding_id, &r.outcome, &r.evidence_hash);
     let verified = deps
         .api
-        .ed25519_verify(&canonical, r.signature.as_slice(), r.resolver_pubkey.as_slice())
+        .ed25519_verify(
+            &canonical,
+            r.signature.as_slice(),
+            r.resolver_pubkey.as_slice(),
+        )
         .map_err(|_| ContractError::InvalidSignature)?;
     if !verified {
         return Err(ContractError::InvalidSignature);
@@ -83,13 +81,12 @@ fn process_resolution(
 
     // Load the finding being resolved.
     let key = (r.plan_id.as_str(), r.finding_id.as_str());
-    let mut state =
-        FINDINGS
-            .may_load(deps.storage, key)?
-            .ok_or_else(|| ContractError::FindingNotCommitted {
-                plan_id: r.plan_id.clone(),
-                finding_id: r.finding_id.clone(),
-            })?;
+    let mut state = FINDINGS.may_load(deps.storage, key)?.ok_or_else(|| {
+        ContractError::FindingNotCommitted {
+            plan_id: r.plan_id.clone(),
+            finding_id: r.finding_id.clone(),
+        }
+    })?;
     if state.resolution.is_some() {
         return Err(ContractError::FindingAlreadyResolved {
             plan_id: r.plan_id,

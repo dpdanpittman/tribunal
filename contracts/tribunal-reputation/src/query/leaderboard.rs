@@ -12,7 +12,7 @@ pub fn leaderboard(
     role: Option<String>,
     limit: Option<u32>,
 ) -> StdResult<LeaderboardResp> {
-    let role_filter: Option<Role> = role.as_deref().and_then(Role::from_str);
+    let role_filter: Option<Role> = role.as_deref().and_then(Role::parse);
     let limit = limit.unwrap_or(20).min(MAX_LEADERBOARD) as usize;
 
     let mut all: Vec<(Binary, crate::state::AgentRecord)> = vec![];

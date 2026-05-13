@@ -52,7 +52,14 @@ pub fn execute(
             role,
             initial_balance,
         } => execute::register::register_agent(
-            deps, env, info, pubkey, label, model_id, role, initial_balance,
+            deps,
+            env,
+            info,
+            pubkey,
+            label,
+            model_id,
+            role,
+            initial_balance,
         ),
         ExecuteMsg::CommitFinding(f) => execute::commit::commit_finding(deps, env, info, f),
         ExecuteMsg::CommitFindingBatch { plan_id, findings } => {
@@ -70,7 +77,14 @@ pub fn execute(
             new_model_id,
             reason,
         } => execute::rotate::rotate_agent(
-            deps, env, info, old_pubkey, new_pubkey, new_label, new_model_id, reason,
+            deps,
+            env,
+            info,
+            old_pubkey,
+            new_pubkey,
+            new_label,
+            new_model_id,
+            reason,
         ),
     }
 }
@@ -78,12 +92,17 @@ pub fn execute(
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Reputation { pubkey } => to_json_binary(&query::reputation::reputation(deps, pubkey)?),
-        QueryMsg::Agent { pubkey } => to_json_binary(&query::agent::agent(deps, pubkey)?),
-        QueryMsg::AgentByLabel { label } => to_json_binary(&query::agent::agent_by_label(deps, label)?),
-        QueryMsg::Finding { plan_id, finding_id } => {
-            to_json_binary(&query::finding::finding(deps, plan_id, finding_id)?)
+        QueryMsg::Reputation { pubkey } => {
+            to_json_binary(&query::reputation::reputation(deps, pubkey)?)
         }
+        QueryMsg::Agent { pubkey } => to_json_binary(&query::agent::agent(deps, pubkey)?),
+        QueryMsg::AgentByLabel { label } => {
+            to_json_binary(&query::agent::agent_by_label(deps, label)?)
+        }
+        QueryMsg::Finding {
+            plan_id,
+            finding_id,
+        } => to_json_binary(&query::finding::finding(deps, plan_id, finding_id)?),
         QueryMsg::Leaderboard { role, limit } => {
             to_json_binary(&query::leaderboard::leaderboard(deps, role, limit)?)
         }

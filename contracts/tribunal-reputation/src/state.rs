@@ -19,7 +19,7 @@ pub enum Role {
 }
 
 impl Role {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "project-manager" => Some(Role::ProjectManager),
             "architect" => Some(Role::Architect),
@@ -49,7 +49,7 @@ pub enum Severity {
 }
 
 impl Severity {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "critical" => Some(Severity::Critical),
             "warning" => Some(Severity::Warning),
@@ -90,7 +90,7 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "true_positive" => Some(Outcome::TruePositive),
             "false_positive" => Some(Outcome::FalsePositive),
