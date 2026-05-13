@@ -49,6 +49,9 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown
 
       - name: cosmwasm-check
+        # Pin to the 2.x line because (a) it matches our cosmwasm-std 2.x
+        # major and (b) the latest 3.x release fails to link on current
+        # stable Rust due to a wasmer-vm/__rust_probestack issue.
         run: |
-          cargo install cosmwasm-check --locked
+          cargo install cosmwasm-check --version "^2" --locked
           cosmwasm-check target/wasm32-unknown-unknown/release/tribunal_reputation.wasm
