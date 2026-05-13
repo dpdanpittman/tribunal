@@ -112,7 +112,19 @@ The adversary attacks the _consensus_, not the code. Its categories of attack in
 
 If the adversary surfaces a Critical finding, the change loops back. If the adversary `SURVIVES`, the change advances to verification.
 
-**Multi-model elevation.** For high-stakes changes (mainnet contract, deployment script, security-adjacent), the adversary is dispatched **across model families simultaneously** — Claude + OpenAI + Gemini + local — and a synthesis layer reports shared, unique, and divergent findings. Multi-model defaults to off; `@project-manager` opts in via Assignment.
+**Diversity-aware dispatch.** Tribunal treats adversary diversity as a _spectrum_, not a vendor-axis-only thing. Cross-vendor diversity (Claude vs. OpenAI vs. Gemini vs. local) is theoretically the strongest — different training corpora, different RLHF flavors, different tokenizers — but it's empirically uncertain how much it actually buys for code review, and it's expensive.
+
+In practice, you can get most of the diversity payoff from **within-family variation**:
+
+- Different system-prompt focus (`adversary-spec`, `adversary-impl`, `adversary-temporal`).
+- Different temperature (deterministic vs. exploratory).
+- Different model tier (Opus vs. Sonnet).
+- Different snapshot (4.6 vs. 4.7, etc.).
+- Different reasoning budget.
+
+The **default adversary panel** is three Claude variants with different temperature × focus configurations — fits inside a single Claude Code subscription, no extra API spend. The **high-stakes panel** is an explicit opt-in that fans the same prompt out across vendor families simultaneously and produces a synthesis report covering shared, unique, and divergent findings. `@project-manager` opts in via Assignment for changes where shared-training-corpus blind spots actually matter (mainnet contracts, security-critical paths, compliance-adjacent code).
+
+This dimension-agnostic dispatch lets the reputation ledger _learn_ which kind of diversity actually pays off over time. After enough plans, the leaderboard can tell you whether cross-vendor adversaries find materially more unique critical bugs than three Claudes with different prompts — and you decide whether to pay for the vendor diversity going forward based on real data, not a priori theory.
 
 ## The verification pyramid
 
@@ -227,9 +239,11 @@ Where `decay` is exponential with a 30-day half-life and `severity_weight` is `{
 - Findings from agents with `R < R_low` require **corroboration** from a second agent within the same round before they enter the action queue.
 - Agents below `R_floor` get rotated **out of the next round's pool**. Their slot is taken by a fresh agent (different model, different prompt seed).
 
-### Family-diversity bonus
+### Diversity bonus
 
-A unique finding surfaced by a model family that hasn't produced a finding in the current round gets a 1.5× reward multiplier. Encourages keeping diverse models in the pool even when their per-round hit rate is lower.
+A unique finding surfaced by an agent whose _diversity bucket_ hasn't produced a finding in the current round gets a 1.5× reward multiplier. The diversity bucket is configurable per project; reasonable choices include vendor family (`anthropic` / `openai` / `google` / `local`), temperature band (`deterministic` / `creative`), prompt focus (`spec` / `impl` / `temporal`), or a combination.
+
+For within-Claude panels (the v0.2 default), the bucket is typically `(temperature_band, focus)`. For cross-vendor panels (high-stakes opt-in), the bucket is typically `vendor_family`. The methodology is agnostic — the goal is to encourage variance along whichever axis you've configured.
 
 ### On-chain anchoring
 

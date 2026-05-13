@@ -77,20 +77,45 @@ An agent with this finding history:
 
 Recent TPs and FPs dominate; the 60-day-old FP barely registers.
 
-## Family-diversity bonus
+## Diversity bonus
 
-A unique finding surfaced by a model family that hasn't produced a finding in the current round gets a 1.5× reward multiplier when the outcome is `true_positive`.
+A unique finding surfaced by an agent whose _diversity bucket_ hasn't produced a finding in the current round gets a 1.5× reward multiplier when the outcome is `true_positive`.
 
-"Family" maps to the model provider:
+The diversity bucket is **configurable per project**. The methodology doesn't insist on vendor-family diversity; it insists on _some_ axis of diversity, and lets you decide which axis matters.
 
-- `claude-*` → Anthropic
-- `gpt-*`, `o*` → OpenAI
-- `gemini-*` → Google
-- `qwen-*`, `mistral-*`, `llama-*`, `phi-*` → Local (LM Studio / Ollama families)
+### Bucket choices
 
-Why: a unique finding from a model whose family rarely contributes is more valuable signal than yet another finding from the dominant family. The bonus encourages keeping diverse models in the pool even when their per-round hit rate is lower than Anthropic's.
+A bucket is a function from `(agent, finding)` to a label string. Findings whose buckets match are counted as same-bucket for the purposes of the diversity bonus.
 
-The bonus only applies to _unique_ findings (not corroborating findings). A model that just nods along with the dominant family doesn't earn it.
+Built-in bucket functions:
+
+- **`vendor_family`** — maps `model_id` to one of: `anthropic`, `openai`, `google`, `local`, `other`. The most theoretically strong axis but the most expensive to achieve.
+- **`temperature_band`** — maps the agent's configured temperature to `deterministic` (≤ 0.2), `balanced` (0.2–0.6), `creative` (> 0.6). Useful within a single vendor.
+- **`focus`** — maps the agent's prompt focus to one of: `spec`, `impl`, `temporal`, `security`, `perf`, `general`. Different system prompts shape different attention.
+- **`model_tier`** — `opus`, `sonnet`, `haiku`, `gpt-5`, `gemini-pro`, `local-large`, `local-small`. Cost/capability tiers.
+- **`composite`** — comma-joined combination, e.g. `vendor_family + focus`.
+
+### Default
+
+For the v0.2 default adversary panel (three Claude variants), the bucket is `(temperature_band, focus)`. A Claude-Opus at `temp=0` with focus `spec` is a different bucket from Claude-Opus at `temp=0.7` with focus `impl`.
+
+For the high-stakes panel (cross-vendor), the bucket is typically `vendor_family`.
+
+### Why this matters
+
+The bonus only applies to _unique_ findings (not corroborating findings). An agent that just nods along with the dominant bucket doesn't earn it. The mechanism encourages keeping diverse agents in the pool even when their per-round hit rate is lower — and over time, the reputation ledger reveals which diversity axes are actually paying off.
+
+### Configuring per project
+
+In `tribunal.yaml`:
+
+```yaml
+reputation:
+  diversity_bucket: composite # or vendor_family, temperature_band, focus, model_tier
+  composite_axes: [vendor_family, focus] # only used when diversity_bucket = composite
+```
+
+Choose the axis that matches your panel. Three Claudes? Use `(temperature_band, focus)`. Cross-vendor? Use `vendor_family`. Mixed? Use `composite`.
 
 ## Reputation gates
 
@@ -216,9 +241,32 @@ reputation:
     warning: 4
     suggestion: 2
   outcome_reward_multiplier: 2.0
-  family_diversity_bonus_multiplier: 1.5
+  diversity_bonus_multiplier: 1.5
+  diversity_bucket: composite # vendor_family | temperature_band | focus | model_tier | composite
+  composite_axes: [vendor_family, focus] # only used when diversity_bucket = composite
   cooling_period_days: 14
   indeterminate_after_rounds: 3
+
+adversary:
+  default_panel: # used when Assignment doesn't specify
+    - { provider: claude, model: claude-opus-4-7, temperature: 0, focus: spec }
+    - {
+        provider: claude,
+        model: claude-opus-4-7,
+        temperature: 0.7,
+        focus: impl,
+      }
+    - {
+        provider: claude,
+        model: claude-sonnet-4-6,
+        temperature: 0,
+        focus: temporal,
+      }
+  high_stakes_panel: # used when Assignment declares high-stakes
+    - { provider: claude, model: claude-opus-4-7, temperature: 0, focus: spec }
+    - { provider: openai, model: gpt-5, temperature: 0, focus: spec }
+    - { provider: google, model: gemini-2.5-pro, temperature: 0, focus: spec }
+    - { provider: local, model: qwen-3-32b, temperature: 0, focus: spec }
 ```
 
 Defaults shown above. Projects can tighten or loosen as needed; the on-chain contract uses globally-fixed values (no per-project override) to keep the reputation registry comparable across organizations.

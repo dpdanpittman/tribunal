@@ -62,14 +62,29 @@ The adversary outputs a verdict: `BREAKS` / `SURVIVES` / `INDETERMINATE`.
 - `SURVIVES` → the change advances to `@tribunal-verify`.
 - `INDETERMINATE` → the adversary lacked context; surface the missing artifact and re-run.
 
-### Multi-model elevation
+### Adversary panels (diversity is a spectrum)
 
-For high-stakes changes (mainnet contract, deployment script, anything security-adjacent), the Assignment may declare `Adversary mode: multi-model`. When set:
+The adversary doesn't have to be one agent. Dispatch a **panel** in parallel, and let the synthesis layer report shared, unique, and divergent findings. The right panel composition depends on the stakes.
 
-- Dispatch the adversary attack prompt across multiple providers in parallel — Claude (native subagent), local model (LM Studio), and one or more cloud frontier (OpenAI, Gemini) — via the `tribunal dispatch` mechanism (v0.2+).
-- Persist each model's report verbatim to `.tribunal/attacks/<plan-id>-<timestamp>/`.
-- Produce a synthesis layer covering shared findings (≥ 2 models), unique findings (exactly 1 model), and verdict comparison. **Never edit individual model reports** — each model's blind spots are different and editing flattens them.
-- Reward unique TPs from underrepresented model families with the family-diversity bonus when settling outcomes.
+**Default panel** (used when the Assignment doesn't say otherwise): **three Claude variants** with different temperature + focus configurations. Cost-efficient — fits inside a single Claude Code subscription with no extra API spend. Example:
+
+```
+claude-adversary-spec     : Opus, temp=0,   focus=spec
+claude-adversary-impl     : Opus, temp=0.7, focus=impl
+claude-adversary-temporal : Sonnet, temp=0, focus=temporal
+```
+
+Diversity within Claude comes from prompt focus, temperature, model tier, and snapshot. In practice, this catches the bulk of what cross-vendor panels catch, at a fraction of the cost.
+
+**High-stakes panel** (Assignment declares `Adversary mode: high-stakes`): fans the attack across **vendor families** — Claude + OpenAI + Gemini + local (LM Studio) — in parallel via the `tribunal dispatch` mechanism. Use when shared-training-corpus blind spots are a real risk: mainnet contracts, security-critical paths, compliance-adjacent code.
+
+Either way:
+
+- Persist each panel member's report verbatim to `.tribunal/attacks/<plan-id>-<timestamp>/`. **Never edit individual reports** — each agent's blind spots are different and editing flattens them.
+- Produce a synthesis covering shared findings (≥ 2 agents), unique findings (exactly 1 agent), verdict comparison, and coverage gaps.
+- Apply the diversity bonus when settling unique true-positive outcomes — the bonus encourages variance along whatever diversity axis the panel was configured on.
+
+The reputation ledger learns over time which panel composition actually pays off for your project.
 
 ## Persistence
 

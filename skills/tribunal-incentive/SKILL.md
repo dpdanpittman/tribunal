@@ -53,9 +53,17 @@ Before treating a finding as actionable, consult `tribunal ledger summary` for t
 
 These decisions are queryable: `tribunal ledger gate <agent-label>` returns the decision.
 
-## Family-diversity bonus
+## Diversity bonus
 
-When settling a true positive, check whether the finding's model family was the only family to surface that bug class in the round. If so, apply a 1.5× reward multiplier. Encourages keeping diverse models in the pool.
+When settling a true positive, check whether the finding's _diversity bucket_ was the only bucket to surface that bug class in the round. If so, apply a 1.5× reward multiplier.
+
+The diversity bucket is configurable per project (see `docs/incentive-mechanism.md`). Reasonable choices include:
+
+- **`vendor_family`** — Anthropic / OpenAI / Google / local. Most theoretically strong, most expensive. Use for high-stakes opt-in panels.
+- **`temperature_band` + `focus`** — `(deterministic, spec)`, `(creative, impl)`, etc. Useful for multi-Claude panels (the v0.2 default).
+- **`model_tier`** — Opus / Sonnet / Haiku, GPT-5 / Gemini-Pro, large-local / small-local.
+
+The bonus encourages variance along whatever axis you've configured. The reputation ledger then _measures_ which axis actually pays off — over time, you can decide whether the cost of vendor diversity is worth it for your project.
 
 ## On-chain settlement (v0.3+)
 
