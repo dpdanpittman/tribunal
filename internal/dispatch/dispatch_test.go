@@ -3,24 +3,26 @@ package dispatch
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 // mockProvider lets tests assert exactly how the dispatcher routes inputs
-// and aggregates outputs without making real HTTP calls.
+// and aggregates outputs without making real HTTP calls. The call counter
+// is atomic because Dispatch fans out concurrently.
 type mockProvider struct {
 	name        string
 	staticReply *Report
 	staticErr   error
 	delay       time.Duration
-	calls       int
+	calls       atomic.Int64
 }
 
 func (m *mockProvider) Name() string { return m.name }
 
 func (m *mockProvider) Attack(ctx context.Context, member PanelMember, sys, user string) (*Report, error) {
-	m.calls++
+	m.calls.Add(1)
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):
@@ -58,11 +60,11 @@ func TestDispatchRoutesByProviderName(t *testing.T) {
 	if len(reports) != 3 {
 		t.Fatalf("got %d reports, want 3", len(reports))
 	}
-	if pa.calls != 2 {
-		t.Errorf("claude called %d times, want 2", pa.calls)
+	if pa.calls.Load() != 2 {
+		t.Errorf("claude called %d times, want 2", pa.calls.Load())
 	}
-	if pb.calls != 1 {
-		t.Errorf("openai called %d times, want 1", pb.calls)
+	if pb.calls.Load() != 1 {
+		t.Errorf("openai called %d times, want 1", pb.calls.Load())
 	}
 	// Members carried through.
 	if reports[0].Member.Label != "claude-spec" {
