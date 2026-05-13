@@ -54,6 +54,10 @@ jobs:
         run: |
           ./tribunal --version
           ./tribunal --help
+          ./tribunal verify --help
+          ./tribunal dispatch --help
+          ./tribunal dispatch test --panel default
+          ./tribunal dispatch test --panel high-stakes
 
   fizzbuzz-example:
     runs-on: ubuntu-latest
@@ -77,6 +81,11 @@ jobs:
           cd examples/go-fizzbuzz-verified
           ../../tribunal ledger verify
           ../../tribunal ledger summary
+
+      - name: Run verification pyramid against demo
+        run: |
+          cd examples/go-fizzbuzz-verified
+          ../../tribunal verify .
 
       - name: Re-seed is deterministic
         run: |

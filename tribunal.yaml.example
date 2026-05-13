@@ -1,0 +1,59 @@
+# tribunal.yaml — copy to your project root and edit as needed.
+#
+# Both top-level sections are optional. Tribunal applies documented defaults
+# for anything you omit, so a minimal config can be just `verify:` with
+# overrides for the layers you care about.
+
+# Verification pyramid configuration.
+verify:
+  # Reference stack for this project. Currently supports: go, rust, ts.
+  stack: go
+
+  # Halt the pyramid on the first failing layer. Defaults to true.
+  # Set to false to gather a full multi-layer failure picture in one run.
+  halt_on_failure: true
+
+  # Exclude specific layers entirely. Useful when an optional tool is
+  # intentionally not in scope for this project.
+  exclude_layers: []
+
+  # Go-stack tuning. Only consulted when stack: go.
+  go:
+    # Pass -race to `go test`. Defaults to true.
+    race: true
+
+    # Pass -count=N to `go test`. Defaults to 1.
+    test_count: 1
+
+    # Enable the optional `staticcheck` layer (requires the binary in PATH).
+    # Defaults to false. Flip when your project commits to staticcheck.
+    staticcheck: false
+
+    # Enable the optional `golangci-lint` layer (requires the binary in PATH).
+    # Defaults to false.
+    golangci_lint: false
+
+    # Enable the `go-fuzz` layer when both fields are non-empty. The values
+    # are passed to `go test -fuzz=<pattern> -fuzztime=<duration> ./...`.
+    fuzz_pattern: ""
+    fuzz_time: ""
+
+# Adversary panel configuration.
+adversary:
+  # Default panel: three Claude variants with different temperature x focus.
+  # Cost-efficient — fits in a single Claude Code subscription with no
+  # extra API spend. Use this for routine plan-close reviews.
+  default_panel:
+    - { label: claude-spec,     provider: claude, model: claude-opus-4-7,   temperature: 0,   focus: spec }
+    - { label: claude-impl,     provider: claude, model: claude-opus-4-7,   temperature: 0.7, focus: impl }
+    - { label: claude-temporal, provider: claude, model: claude-sonnet-4-6, temperature: 0,   focus: temporal }
+
+  # High-stakes panel: cross-vendor diversity. Opt in via the Assignment
+  # ('Adversary mode: high-stakes') for mainnet contracts, security-critical
+  # paths, compliance-adjacent code — anywhere shared-training-corpus blind
+  # spots actually matter.
+  high_stakes_panel:
+    - { label: claude-spec,  provider: claude, model: claude-opus-4-7,  temperature: 0, focus: spec }
+    - { label: gpt-spec,     provider: openai, model: gpt-5,            temperature: 0, focus: spec }
+    - { label: gemini-spec,  provider: google, model: gemini-2.5-pro,   temperature: 0, focus: spec }
+    - { label: local-spec,   provider: local,  model: qwen-3-32b,       temperature: 0, focus: spec }

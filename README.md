@@ -18,15 +18,24 @@ The novel piece neither has: **reputation-weighted findings**. Agents have verif
 
 ## Quick start
 
-> Requires Go 1.23+. Optional: an Anthropic / OpenAI / Google API key for multi-model adversarial review (v0.2+), and a Burnt XION testnet account for on-chain settlement (v0.3+).
+> Requires Go 1.23+. Optional: an Anthropic API key (`ANTHROPIC_API_KEY`) for the Claude adversary panel; v0.3+ adds Burnt XION on-chain settlement.
 
 ```bash
 go install github.com/dpdanpittman/tribunal/cmd/tribunal@latest
-tribunal init --target claude-code     # installs skills + agents
-tribunal agents add claude-adversary --model claude-opus-4-7 --role adversary
-cd <your-project>
-tribunal review .                       # run hybrid review on current diff
-tribunal ledger summary                 # see per-agent reputation
+tribunal init                            # scaffold .tribunal/ in the project
+cp tribunal.yaml.example tribunal.yaml   # tune panels + verify stack to taste
+
+# Verification pyramid (runs build / fmt / vet / test / ... per stack).
+tribunal verify .
+
+# Adversary review stage (lens-parallel trio is dispatched by your host
+# harness; this command runs the adversary panel + writes signed findings
+# to .tribunal/ledger.jsonl).
+ANTHROPIC_API_KEY=sk-... tribunal review --plan P-42
+
+# Inspect what's in the ledger.
+tribunal ledger summary
+tribunal ledger leaderboard
 ```
 
 ## Status
