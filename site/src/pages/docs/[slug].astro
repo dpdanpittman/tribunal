@@ -7,7 +7,7 @@ const docFiles = import.meta.glob<{
   Content: any;
   frontmatter?: Record<string, any>;
   rawContent?: () => string;
-}>("../../../../docs/*.md", { eager: true });
+}>("../../../_content/docs/*.md", { eager: true });
 
 const docMap: Record<string, { Content: any; frontmatter?: Record<string, any>; title: string }> = {};
 
@@ -27,7 +27,7 @@ for (const path in docFiles) {
 }
 
 export async function getStaticPaths() {
-  const docFiles = import.meta.glob("../../../../docs/*.md", { eager: true });
+  const docFiles = import.meta.glob("../../../_content/docs/*.md", { eager: true });
   const slugs: string[] = [];
   for (const path in docFiles) {
     const m = path.match(/\/([^/]+)\.md$/);

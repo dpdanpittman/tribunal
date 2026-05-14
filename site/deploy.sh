@@ -27,6 +27,9 @@ KCTL='sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+echo "==> sync content (docs + reports) into site/_content/"
+node "${SCRIPT_DIR}/scripts/sync-content.mjs"
+
 echo "==> rsync to ${REMOTE_HOST}:${REMOTE_DIR}"
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR}"
 rsync -avz --delete \
