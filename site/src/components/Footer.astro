@@ -1,0 +1,17 @@
+---
+const year = new Date().getFullYear();
+---
+<footer class="mt-24 border-t border-ink-800/80">
+  <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm text-ink-400">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-1.5 h-1.5 rounded-full bg-verdict-adversary/70"></span>
+      <span class="font-display font-medium text-ink-200">Tribunal</span>
+      <span>&copy; {year} Mabus</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="https://github.com/dpdanpittman/tribunal" class="hover:text-ink-100" target="_blank" rel="noopener">github</a>
+      <a href="/docs" class="hover:text-ink-100">methodology</a>
+      <a href="/audits/p-v032-audit" class="hover:text-ink-100">audits</a>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,88 @@
+---
+import Base from "../../layouts/Base.astro";
+
+// Pull markdown source from the canonical docs/ dir at the tribunal repo root.
+// Astro's import.meta.glob with eager: true inlines content at build time.
+const docFiles = import.meta.glob<{
+  Content: any;
+  frontmatter?: Record<string, any>;
+  rawContent?: () => string;
+}>("../../../../docs/*.md", { eager: true });
+
+const docMap: Record<string, { Content: any; frontmatter?: Record<string, any>; title: string }> = {};
+
+for (const path in docFiles) {
+  const m = path.match(/\/([^/]+)\.md$/);
+  if (!m) continue;
+  const slug = m[1];
+  const mod = docFiles[path];
+  const titleFromFrontmatter = (mod as any).frontmatter?.title;
+  // Pull title from first H1 if no frontmatter title
+  const titleFallback = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  docMap[slug] = {
+    Content: (mod as any).Content,
+    frontmatter: (mod as any).frontmatter,
+    title: titleFromFrontmatter || titleFallback,
+  };
+}
+
+export async function getStaticPaths() {
+  const docFiles = import.meta.glob("../../../../docs/*.md", { eager: true });
+  const slugs: string[] = [];
+  for (const path in docFiles) {
+    const m = path.match(/\/([^/]+)\.md$/);
+    if (m) slugs.push(m[1]);
+  }
+  return slugs.map((slug) => ({ params: { slug } }));
+}
+
+const { slug } = Astro.params;
+const doc = docMap[slug as string];
+
+if (!doc) {
+  return Astro.redirect("/docs");
+}
+
+const orderedSlugs = ["methodology", "incentive-mechanism", "on-chain-protocol", "installation"];
+const allSlugs = Object.keys(docMap).sort((a, b) => {
+  const ai = orderedSlugs.indexOf(a);
+  const bi = orderedSlugs.indexOf(b);
+  return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+});
+---
+<Base title={doc.title}>
+  <div class="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-[220px_1fr] gap-12">
+    <!-- SIDEBAR -->
+    <aside class="hidden md:block">
+      <div class="sticky top-20">
+        <p class="text-xs uppercase tracking-[0.2em] text-ink-400 font-mono mb-4">Methodology</p>
+        <ul class="space-y-1.5 text-sm">
+          {allSlugs.map((s) => (
+            <li>
+              <a
+                href={`/docs/${s}`}
+                class={`block px-2 py-1 rounded ${
+                  s === slug
+                    ? "text-verdict-adversary bg-verdict-adversary/10 font-medium"
+                    : "text-ink-300 hover:text-ink-50 hover:bg-ink-800/60"
+                }`}
+              >
+                {docMap[s].title}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="mt-8 pt-6 border-t border-ink-800">
+          <a href="https://github.com/dpdanpittman/tribunal" target="_blank" rel="noopener" class="text-sm text-ink-400 hover:text-ink-100">
+            github / tribunal →
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT -->
+    <article class="prose-tribunal min-w-0">
+      <doc.Content />
+    </article>
+  </div>
+</Base>

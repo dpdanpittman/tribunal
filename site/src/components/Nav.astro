@@ -1,0 +1,45 @@
+---
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/docs", label: "Methodology" },
+  { href: "/audits/p-v032-audit", label: "Audit case study" },
+  { href: "/leaderboard", label: "Leaderboard" },
+];
+const path = Astro.url.pathname.replace(/\/$/, "") || "/";
+---
+<nav class="sticky top-0 z-30 border-b border-ink-800/80 bg-ink-950/85 backdrop-blur-md">
+  <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-6">
+    <a href="/" class="flex items-center gap-2 group">
+      <span class="inline-block w-2 h-2 rounded-full bg-verdict-adversary shadow-[0_0_12px_rgba(167,139,250,0.7)] group-hover:bg-verdict-approve transition-colors"></span>
+      <span class="font-display font-semibold tracking-tight text-ink-50">Tribunal</span>
+      <span class="hidden sm:inline text-ink-400 text-sm">— adversarial code review with on-chain reputation</span>
+    </a>
+    <ul class="flex items-center gap-1 text-sm">
+      {links.slice(1).map((l) => {
+        const active = path === l.href || (l.href !== "/" && path.startsWith(l.href));
+        return (
+          <li>
+            <a
+              href={l.href}
+              class={`px-3 py-1.5 rounded-md transition-colors ${
+                active
+                  ? "text-verdict-adversary bg-verdict-adversary/10"
+                  : "text-ink-200 hover:text-ink-50 hover:bg-ink-800/60"
+              }`}
+            >
+              {l.label}
+            </a>
+          </li>
+        );
+      })}
+      <li class="ml-2">
+        <a
+          href="https://github.com/dpdanpittman/tribunal"
+          target="_blank"
+          rel="noopener"
+          class="px-3 py-1.5 rounded-md text-sm text-ink-300 hover:text-ink-50 border border-ink-700 hover:border-ink-500 transition-colors"
+        >GitHub →</a>
+      </li>
+    </ul>
+  </div>
+</nav>

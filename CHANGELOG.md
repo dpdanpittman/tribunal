@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Public site at `tribunal.mabus.ai`** (`site/`) — Astro 4 + Tailwind. Hero + methodology, the four canonical docs rendered from `docs/*.md`, the P-v032-audit case study as a polished single page, and a live on-chain leaderboard that queries the deployed contract on `xion-testnet-2` client-side. Multi-stage `Dockerfile` (Astro build → nginx), k8s manifests in `site/k8s/`, `site/deploy.sh` builds + deploys to the zaphod node via `hostPort`. Caddy on zaphod reverse-proxies `tribunal.mabus.ai` to `localhost:3400`.
+- **Testnet deployment** at `xion1rw526nsectccl335slusux4szcpk77h23y8tyg5g9drhkhnhhnss9cps84` on `xion-testnet-2`. Same contract, public chain. P-v032-audit replayed on testnet so anyone can verify the 30 commit + 30 resolve txs via the LCD.
+
 ## [0.3.3] — 2026-05-13
 
 Audit-driven fix release. v0.3.2 itself was reviewed by the full Tribunal methodology — three lens reviewers (architecture, security, performance) plus an adversary panel — and the audit surfaced 3 Critical + 12 Warning defects that the manual e2e couldn't have caught. v0.3.3 fixes the Critical findings, every Warning that affects correctness or operator safety, and the cross-corpus blind spot the adversary alone identified. No contract changes; no migration. Audit report at `.tribunal/reports/P-v032-audit/SYNTHESIS.md`.

@@ -51,6 +51,10 @@ This repo is in active development. v0.1 ships the methodology, CLI, skills/agen
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for what's released, and [`docs/methodology.md`](./docs/methodology.md) for the design.
 
+## Public site
+
+[**tribunal.mabus.ai**](https://tribunal.mabus.ai) — landing, the methodology rendered with sidebar nav, the [P-v032-audit case study](https://tribunal.mabus.ai/audits/p-v032-audit) (Tribunal reviewing its own release), and a [live on-chain leaderboard](https://tribunal.mabus.ai/leaderboard) that queries the deployed contract on `xion-testnet-2` client-side. Source under [`site/`](./site/).
+
 ## Why Tribunal
 
 LLMs are fast, broad, and characteristically unreliable. Code review, tests, and audit are human-bottlenecked and scale linearly with reviewer attention. LLM output scales 10–100× faster. That mismatch is the trust gap.

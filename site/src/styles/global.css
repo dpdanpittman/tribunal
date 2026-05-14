@@ -1,0 +1,124 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-sans antialiased;
+  background-image:
+    radial-gradient(
+      ellipse 80% 50% at 20% -10%,
+      rgba(167, 139, 250, 0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 80% 50% at 80% 100%,
+      rgba(52, 211, 153, 0.04),
+      transparent 60%
+    );
+  background-attachment: fixed;
+}
+
+/* Subtle grid background for header / hero */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(180, 185, 204, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(180, 185, 204, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Treat ed25519: pubkeys, tx hashes, ids as visually distinct */
+.hash {
+  @apply font-mono text-ink-300 text-[0.85em] break-all;
+}
+
+/* Severity / verdict color helpers */
+.sev-critical {
+  @apply text-verdict-critical border-verdict-critical/40 bg-verdict-critical/5;
+}
+.sev-warning {
+  @apply text-verdict-warn border-verdict-warn/40 bg-verdict-warn/5;
+}
+.sev-suggestion {
+  @apply text-ink-300 border-ink-500/40 bg-ink-800/40;
+}
+.verdict-approve {
+  @apply text-verdict-approve border-verdict-approve/40 bg-verdict-approve/10;
+}
+.verdict-change {
+  @apply text-verdict-warn   border-verdict-warn/40   bg-verdict-warn/10;
+}
+.verdict-escalate {
+  @apply text-verdict-critical border-verdict-critical/40 bg-verdict-critical/10;
+}
+
+/* Long-form prose styling — replaces @tailwindcss/typography minimally */
+.prose-tribunal {
+  @apply text-ink-200 leading-relaxed max-w-none;
+}
+.prose-tribunal h1 {
+  @apply font-display text-3xl font-semibold text-ink-50 mt-12 mb-4 tracking-tight;
+}
+.prose-tribunal h2 {
+  @apply font-display text-2xl font-semibold text-ink-50 mt-12 mb-3 tracking-tight border-b border-ink-700 pb-2;
+}
+.prose-tribunal h3 {
+  @apply font-display text-lg font-semibold text-ink-100 mt-8 mb-2;
+}
+.prose-tribunal h4 {
+  @apply font-display text-base font-semibold text-ink-100 mt-6 mb-2 uppercase tracking-wider text-ink-300;
+}
+.prose-tribunal p {
+  @apply my-4 text-ink-200;
+}
+.prose-tribunal ul {
+  @apply my-4 ml-6 list-disc text-ink-200 space-y-1;
+}
+.prose-tribunal ol {
+  @apply my-4 ml-6 list-decimal text-ink-200 space-y-1;
+}
+.prose-tribunal li {
+  @apply pl-1;
+}
+.prose-tribunal strong {
+  @apply text-ink-50 font-semibold;
+}
+.prose-tribunal em {
+  @apply italic text-ink-100;
+}
+.prose-tribunal a {
+  @apply text-verdict-adversary hover:text-verdict-approve underline underline-offset-2 decoration-ink-500 hover:decoration-verdict-approve transition-colors;
+}
+.prose-tribunal code {
+  @apply font-mono text-[0.92em] bg-ink-800/60 text-ink-100 px-1.5 py-0.5 rounded border border-ink-700/60;
+}
+.prose-tribunal pre {
+  @apply my-6 p-4 rounded-lg bg-ink-900 border border-ink-700 overflow-x-auto text-sm leading-relaxed;
+}
+.prose-tribunal pre code {
+  @apply bg-transparent border-0 p-0 text-ink-100;
+}
+.prose-tribunal blockquote {
+  @apply my-6 pl-4 border-l-2 border-verdict-adversary/60 text-ink-200 italic;
+}
+.prose-tribunal table {
+  @apply my-6 w-full border-collapse text-sm;
+}
+.prose-tribunal th {
+  @apply text-left px-3 py-2 border-b border-ink-700 font-semibold text-ink-100 bg-ink-800/60;
+}
+.prose-tribunal td {
+  @apply px-3 py-2 border-b border-ink-800 text-ink-200;
+}
+.prose-tribunal hr {
+  @apply my-10 border-ink-700;
+}

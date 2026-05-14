@@ -1,0 +1,59 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const docs = [
+  {
+    slug: "methodology",
+    title: "The Tribunal Methodology",
+    lede: "The full design. Why cooperation is the wrong primitive for correctness, what the four guarantees are, how the trio + adversary + verification pyramid + reputation layer compose.",
+  },
+  {
+    slug: "incentive-mechanism",
+    title: "Incentive mechanism",
+    lede: "How signed findings, PM resolutions, and on-chain reputation form a feedback loop. Severity weights, stake amounts, exponential decay, family-diversity bonus.",
+  },
+  {
+    slug: "on-chain-protocol",
+    title: "On-chain protocol",
+    lede: "The CosmWasm contract's surface: register_agent, commit_finding_batch, resolve_finding_batch, rotate_agent. Query shapes, canonical signing format, ed25519 verification.",
+  },
+  {
+    slug: "installation",
+    title: "Installation",
+    lede: "Per-host setup. Go CLI, skill tree, chain config bootstrap, wallet provisioning. From zero to filing a signed finding.",
+  },
+];
+---
+<Base title="Methodology" description="Tribunal methodology: process backbone, lens-parallel review, adversarial gate, on-chain incentive layer.">
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-4xl mx-auto px-6 pt-20 pb-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">Methodology</p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        How Tribunal works, in four documents.
+      </h1>
+      <p class="mt-6 text-lg text-ink-300 max-w-2xl leading-relaxed">
+        Start with the methodology. The other three are companions — read whichever one your role hits first.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="max-w-4xl mx-auto px-6 py-16">
+      <ul class="space-y-4">
+        {docs.map((d) => (
+          <li>
+            <a href={`/docs/${d.slug}`} class="block rounded-xl border border-ink-700/60 bg-ink-900/40 p-6 hover:border-verdict-adversary/40 hover:bg-ink-900/60 transition-colors group">
+              <div class="flex items-baseline justify-between gap-4">
+                <h2 class="font-display text-xl font-semibold text-ink-50 group-hover:text-verdict-adversary transition-colors">
+                  {d.title}
+                </h2>
+                <span class="font-mono text-xs text-ink-400 group-hover:text-verdict-adversary transition-colors">/{d.slug}</span>
+              </div>
+              <p class="mt-2 text-ink-300 leading-relaxed">{d.lede}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+</Base>

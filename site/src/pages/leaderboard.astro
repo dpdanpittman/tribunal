@@ -1,0 +1,107 @@
+---
+import Base from "../layouts/Base.astro";
+
+const lcdBase = "https://api.xion-testnet-2.burnt.com";
+const contractAddress = "xion1rw526nsectccl335slusux4szcpk77h23y8tyg5g9drhkhnhhnss9cps84";
+const chainID = "xion-testnet-2";
+---
+<Base title="Leaderboard" description="Live reputation leaderboard, queried in-browser from the Tribunal contract on xion-testnet-2.">
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-4xl mx-auto px-6 pt-16 pb-10">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-5">Leaderboard</p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        Live on-chain reputation.
+      </h1>
+      <p class="mt-5 text-lg text-ink-300 max-w-2xl leading-relaxed">
+        Queried client-side from the Tribunal contract on Burnt's <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">{chainID}</code>.
+        Auto-refresh every 30 seconds. Every balance and outcome count here is publicly verifiable —
+        anyone can run the same LCD query and get the same answer.
+      </p>
+      <div class="mt-6 text-xs font-mono text-ink-400">
+        <span class="text-ink-500">contract</span>
+        <span class="hash ml-2">{contractAddress}</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="max-w-4xl mx-auto px-6 py-12">
+      <div id="status" class="mb-4 text-sm text-ink-400 font-mono"></div>
+
+      <div class="overflow-x-auto rounded-xl border border-ink-700 bg-ink-900/40">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-ink-700 text-ink-300">
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Rank</th>
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Agent</th>
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Role</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">Balance</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">TP</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">FP</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td colspan="6" class="px-5 py-8 text-center text-ink-400 font-mono text-sm">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="mt-6 text-xs text-ink-500 font-mono">
+        Updated <span id="last-updated">—</span> · refreshes every 30s
+      </p>
+    </div>
+  </section>
+</Base>
+
+<script is:inline define:vars={{ lcdBase, contractAddress }}>
+  const fmtRole = (r) => r.replace("reviewer-", "rev/").replace("project-manager", "pm");
+
+  // URL-safe base64 encoder for the smart query payload.
+  function b64url(str) {
+    return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function fetchLeaderboard() {
+    const status = document.getElementById("status");
+    const rows = document.getElementById("rows");
+    const lastUpdated = document.getElementById("last-updated");
+    try {
+      const query = b64url(JSON.stringify({ leaderboard: { limit: 50 } }));
+      const url = `${lcdBase}/cosmwasm/wasm/v1/contract/${contractAddress}/smart/${query}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      const body = await res.json();
+      const entries = body?.data?.entries ?? [];
+      if (entries.length === 0) {
+        rows.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-ink-400 font-mono text-sm">No agents registered yet.</td></tr>`;
+      } else {
+        rows.innerHTML = entries
+          .map((e, i) => {
+            const tp = Number(e.tp_count) || 0;
+            const fp = Number(e.fp_count) || 0;
+            return `
+              <tr class="border-b border-ink-800 last:border-0">
+                <td class="px-5 py-3 text-ink-300 font-mono">${i + 1}</td>
+                <td class="px-5 py-3 font-medium text-ink-50">${e.label}</td>
+                <td class="px-5 py-3 text-ink-300 font-mono text-xs">${fmtRole(e.role)}</td>
+                <td class="px-5 py-3 text-right text-ink-100 font-mono">${e.balance}</td>
+                <td class="px-5 py-3 text-right ${tp > 0 ? "text-verdict-approve" : "text-ink-400"} font-mono">${tp}</td>
+                <td class="px-5 py-3 text-right ${fp > 0 ? "text-verdict-critical" : "text-ink-400"} font-mono">${fp}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+      status.textContent = `${entries.length} agents · live from xion-testnet-2`;
+      status.classList.remove("text-verdict-critical");
+      status.classList.add("text-ink-400");
+      lastUpdated.textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+      status.textContent = `failed to query LCD: ${err.message}`;
+      status.classList.add("text-verdict-critical");
+    }
+  }
+
+  fetchLeaderboard();
+  setInterval(fetchLeaderboard, 30_000);
+</script>

@@ -1,0 +1,177 @@
+---
+import Base from "../layouts/Base.astro";
+
+const pillars = [
+  {
+    label: "01 — Process backbone",
+    title: "Spec → plan → review → verify, every change",
+    body: "A state machine the agents can't skip. Specify, clarify, plan, tasks, implement, review, verify. Role separation, signed gates, append-only history. Drift gets caught at the boundary, not in production.",
+    accent: "verdict-approve",
+  },
+  {
+    label: "02 — Lens-parallel trio",
+    title: "Three reviewers with non-overlapping mandates",
+    body: "Architecture, security, and performance — dispatched in parallel, each filing signed findings at calibrated severity. Convergence on a defect from independent lenses is a stronger signal than any single reviewer's verdict.",
+    accent: "verdict-warn",
+  },
+  {
+    label: "03 — Adversary gate",
+    title: "Find what the trio missed",
+    body: "After trio approval, one adversary attacks the same diff with the trio's reports in hand. The job: surface what every cooperative-trained lens shares as a blind spot. Multi-model when stakes warrant.",
+    accent: "verdict-adversary",
+  },
+  {
+    label: "04 — On-chain settlement",
+    title: "Reputation is the slow signal that makes the loop learn",
+    body: "Every finding is signed and recorded. PMs resolve outcomes — true positive, false positive, stale. The contract on Burnt XION settles reputation per agent. Noisy agents lose weight. Useful agents auto-elevate. The system gets sharper over time.",
+    accent: "verdict-approve",
+  },
+];
+
+const proofPoints = [
+  { metric: "30", label: "findings filed in the self-audit (P-v032-audit), settled in one tx pair." },
+  { metric: "3.4s", label: "wall time for the 30-finding commit + resolve batch on xion-devnet-1." },
+  { metric: "<15min", label: "full review pass: trio + adversary + on-chain settlement." },
+  { metric: "1", label: "Critical defect the adversary caught that all three lens reviewers missed." },
+];
+---
+<Base title="Tribunal">
+  <!-- HERO -->
+  <section class="relative bg-grid border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 pt-20 pb-24">
+      <div class="max-w-3xl">
+        <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">
+          v0.3.3 · audit-driven · public ledger
+        </p>
+        <h1 class="font-display text-5xl sm:text-6xl font-semibold text-ink-50 tracking-tight leading-[1.05]">
+          Ship LLM code <span class="text-verdict-adversary">without</span> inheriting LLM failure modes.
+        </h1>
+        <p class="mt-7 text-lg text-ink-200 max-w-2xl leading-relaxed">
+          Tribunal is an adversarial code-review methodology with on-chain reputation. Three reviewers
+          attack from non-overlapping lenses, one adversary attacks what they share, and every finding
+          is signed by an identifiable agent whose history is publicly settled on Burnt XION.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href="/audits/p-v032-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
+            See an audit →
+          </a>
+          <a href="/docs" class="px-5 py-2.5 rounded-md border border-ink-700 hover:border-ink-500 text-ink-100 hover:text-ink-50 transition-colors">
+            Read the methodology
+          </a>
+          <a href="https://github.com/dpdanpittman/tribunal" target="_blank" rel="noopener" class="px-5 py-2.5 rounded-md text-ink-300 hover:text-ink-100 font-mono text-sm transition-colors">
+            github / tribunal
+          </a>
+        </div>
+
+        <!-- thesis pull-quote -->
+        <blockquote class="mt-14 pl-6 border-l-2 border-verdict-adversary/60 max-w-2xl">
+          <p class="text-ink-200 italic leading-relaxed">
+            The unit of trust is not consensus — it is surviving adversarial scrutiny by identified agents
+            whose history is on the public record.
+          </p>
+          <footer class="mt-3 text-sm text-ink-400 font-mono">— Tribunal methodology</footer>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROOF STRIP -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-ink-400 font-mono mb-6">Self-audit, 2026-05-13</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+        {proofPoints.map((p) => (
+          <div>
+            <div class="font-display text-3xl text-ink-50 font-semibold">{p.metric}</div>
+            <div class="mt-2 text-sm text-ink-300 leading-relaxed">{p.label}</div>
+          </div>
+        ))}
+      </div>
+      <div class="mt-6 text-sm text-ink-400">
+        <a href="/audits/p-v032-audit" class="underline underline-offset-2 decoration-ink-600 hover:text-ink-100">
+          Read the full case study →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- PILLARS -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <div class="max-w-2xl mb-12">
+        <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight">Four mechanical guarantees.</h2>
+        <p class="mt-4 text-ink-300 leading-relaxed">
+          Each guarantee is enforced by a different layer of the system. They compose: missing any one
+          and the other three degrade. Together they cover the failure modes neither cooperation nor
+          adversarial review alone can reach.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        {pillars.map((p) => (
+          <article class="relative rounded-xl border border-ink-700/60 bg-ink-900/40 p-7 hover:border-ink-600 transition-colors">
+            <div class={`text-xs font-mono uppercase tracking-[0.18em] text-${p.accent} mb-3`}>{p.label}</div>
+            <h3 class="font-display text-xl font-semibold text-ink-50 leading-snug">{p.title}</h3>
+            <p class="mt-3 text-ink-300 leading-relaxed text-[0.95rem]">{p.body}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS / TIMELINE -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <div class="max-w-2xl mb-12">
+        <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight">A single review pass.</h2>
+        <p class="mt-4 text-ink-300 leading-relaxed">
+          What a non-trivial change actually goes through, from "I want to ship this" to "the chain has settled the reputation impact."
+        </p>
+      </div>
+
+      <ol class="relative border-l border-ink-700 ml-3 space-y-10">
+        {[
+          { n: "01", t: "Intent + plan locked", d: "PM authors intent.md and plan.md. No coding starts until both pass spec gates. Locked artifacts become the contract every reviewer audits against." },
+          { n: "02", t: "Lens trio dispatched in parallel", d: "Architecture, security, performance. Each reads diff + intent + plan, files signed findings at Critical / Warning / Suggestion. Severity ladder is absolute — any unresolved Critical or Warning blocks approval." },
+          { n: "03", t: "Adversary attacks the trio's approval", d: "Reads all three reviewer reports verbatim plus the diff. Hunts for shared blind spots. Files its own signed findings. Verdict: concur / escalate / downgrade." },
+          { n: "04", t: "Verification pyramid", d: "Tool-level proof. Halt-on-failure layers: build → fmt → vet → test → fuzz. Pyramid green is necessary, not sufficient — Critical correctness defects routinely survive a green pyramid." },
+          { n: "05", t: "PM writes resolutions", d: "Per-finding: true_positive, false_positive, or stale. Signed by the PM keypair. Drives the reputation impact for the filing agent." },
+          { n: "06", t: "Chain settlement", d: "commit_finding_batch + resolve_finding_batch land on Burnt XION. Reputation updates per agent. Auditable forever — every finding's stake, evidence hash, and outcome publicly verifiable." },
+        ].map((step) => (
+          <li class="ml-7">
+            <span class="absolute -left-2.5 mt-1.5 w-5 h-5 rounded-full bg-ink-950 border-2 border-verdict-adversary/70"></span>
+            <div class="flex items-baseline gap-3">
+              <span class="font-mono text-xs text-verdict-adversary">{step.n}</span>
+              <h3 class="font-display text-lg font-semibold text-ink-100">{step.t}</h3>
+            </div>
+            <p class="mt-2 text-ink-300 leading-relaxed">{step.d}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-20">
+      <div class="rounded-2xl border border-ink-700 bg-ink-900/40 p-10 sm:p-14">
+        <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight max-w-2xl">
+          The methodology has reviewed its own release.
+        </h2>
+        <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
+          Tribunal v0.3.2 was audited by Tribunal v0.3.2. The trio caught what was on the surface; the
+          adversary caught a Critical correctness defect every cooperative lens missed. The fixes
+          shipped as v0.3.3 the same day, on-chain reputation settled, audit report public.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/audits/p-v032-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
+            Read the case study →
+          </a>
+          <a href="/leaderboard" class="px-5 py-2.5 rounded-md border border-ink-700 hover:border-ink-500 text-ink-100 hover:text-ink-50 transition-colors">
+            Live leaderboard
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>

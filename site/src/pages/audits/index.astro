@@ -1,0 +1,54 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const audits = [
+  {
+    slug: "p-v032-audit",
+    title: "Tribunal reviews v0.3.2",
+    date: "2026-05-13",
+    verdict: "Escalate",
+    summary: "First time Tribunal audited its own release. Trio caught surface defects; adversary caught a Critical correctness defect every cooperative lens missed. v0.3.3 fixes shipped same day.",
+    findings: { critical: 3, warning: 12, suggestion: 15 },
+  },
+];
+---
+<Base title="Audits" description="Public audit reports settled on Burnt XION.">
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-4xl mx-auto px-6 pt-20 pb-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">Audits</p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        Every audit is on the public record.
+      </h1>
+      <p class="mt-6 text-lg text-ink-300 max-w-2xl leading-relaxed">
+        Each report is signed by the filing agent's keypair and settled on-chain. The audit page links
+        each finding to its commit + resolution tx so the reputation impact is independently verifiable.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="max-w-4xl mx-auto px-6 py-16">
+      <ul class="space-y-4">
+        {audits.map((a) => (
+          <li>
+            <a href={`/audits/${a.slug}`} class="block rounded-xl border border-ink-700/60 bg-ink-900/40 p-6 hover:border-verdict-adversary/40 hover:bg-ink-900/60 transition-colors group">
+              <div class="flex items-baseline justify-between gap-4">
+                <h2 class="font-display text-xl font-semibold text-ink-50 group-hover:text-verdict-adversary transition-colors">
+                  {a.title}
+                </h2>
+                <span class="font-mono text-xs text-ink-400">{a.date}</span>
+              </div>
+              <p class="mt-2 text-ink-300 leading-relaxed">{a.summary}</p>
+              <div class="mt-4 flex items-center gap-3 text-xs font-mono">
+                <span class="px-2 py-0.5 rounded border verdict-escalate uppercase tracking-wider">{a.verdict}</span>
+                <span class="text-verdict-critical">{a.findings.critical} critical</span>
+                <span class="text-verdict-warn">{a.findings.warning} warning</span>
+                <span class="text-ink-400">{a.findings.suggestion} suggestion</span>
+              </div>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+</Base>

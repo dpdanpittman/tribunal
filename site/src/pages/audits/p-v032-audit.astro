@@ -1,0 +1,226 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const reports = import.meta.glob<{ Content: any }>(
+  "../../../../.tribunal/reports/P-v032-audit/*.md",
+  { eager: true }
+);
+
+const order = ["SYNTHESIS", "reviewer-arch", "reviewer-sec", "reviewer-perf", "adversary"];
+const labels: Record<string, { tab: string; accent: string }> = {
+  SYNTHESIS:        { tab: "Synthesis",  accent: "verdict-adversary" },
+  "reviewer-arch":  { tab: "Architecture", accent: "verdict-approve" },
+  "reviewer-sec":   { tab: "Security",   accent: "verdict-warn" },
+  "reviewer-perf":  { tab: "Performance", accent: "verdict-approve" },
+  adversary:        { tab: "Adversary",  accent: "verdict-critical" },
+};
+
+const sections: { id: string; Content: any; tab: string; accent: string }[] = [];
+for (const path in reports) {
+  const m = path.match(/\/([^/]+)\.md$/);
+  if (!m) continue;
+  const id = m[1];
+  const meta = labels[id];
+  if (!meta) continue;
+  sections.push({ id, Content: (reports[path] as any).Content, tab: meta.tab, accent: meta.accent });
+}
+sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+
+// On-chain references — settled on Burnt's public xion-testnet-2.
+// Anyone can verify by querying the contract or looking up the tx hashes.
+const contractAddress = "xion1rw526nsectccl335slusux4szcpk77h23y8tyg5g9drhkhnhhnss9cps84";
+const chainID = "xion-testnet-2";
+const commitTx = "BCA59687BAB33AE76DB741B9E97966DD44E4ACC7601F6E98B8A66A65ABDFAA27";
+const resolveTx = "41A721E94D5DA15D7B48FDF185BC8C4F420F36E47EC92351E5FA05C51543829C";
+const explorerBase = "https://explorer.burnt.com/xion-testnet-2/tx";
+
+const stats = [
+  { k: "Findings filed",   v: "30",      foot: "Across trio + adversary, signed and appended to ledger." },
+  { k: "Critical",         v: "3",       foot: "Cross-validated by all three lenses + adversary contribution." },
+  { k: "Warnings",         v: "12",      foot: "Correctness + operator-experience defects." },
+  { k: "Suggestions",      v: "15",      foot: "Doc, style, polish. Deferred unless clustered." },
+  { k: "Settle time",      v: "20s",     foot: "Single commit_finding_batch + resolve_finding_batch on xion-testnet-2." },
+  { k: "Verdict",          v: "Escalate", foot: "Audit cycle drove v0.3.3 fix release the same day." },
+];
+
+const reputation = [
+  { rank: 1, agent: "reviewer-arch",   balance: 176, tp: 11 },
+  { rank: 2, agent: "adversary-alpha", balance: 156, tp: 5  },
+  { rank: 3, agent: "reviewer-sec",    balance: 148, tp: 8  },
+  { rank: 4, agent: "reviewer-perf",   balance: 136, tp: 6  },
+  { rank: 5, agent: "pm-alpha",        balance: 100, tp: 0  },
+];
+---
+<Base title="Audit · P-v032-audit" description="Tribunal reviews its own v0.3.2 release. 30 findings, on-chain settlement, v0.3.3 fixes ship same day.">
+  <!-- HEADER -->
+  <section class="border-b border-ink-800/80 bg-grid">
+    <div class="max-w-6xl mx-auto px-6 pt-16 pb-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-5">
+        Case study · 2026-05-13
+      </p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        Tribunal reviewed its own release.
+      </h1>
+      <p class="mt-6 text-lg text-ink-300 max-w-3xl leading-relaxed">
+        The v0.3.2 fix release was audited by Tribunal v0.3.2 against the diff <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">HEAD~1..HEAD</code>. Three lens reviewers
+        in parallel, one adversary in series, all signed findings settled on Burnt XION. The trio caught
+        the surface defects; the adversary caught a Critical correctness defect every cooperative-trained
+        lens missed. v0.3.3 shipped the fixes the same day.
+      </p>
+
+      <!-- on-chain anchor strip -->
+      <div class="mt-10 rounded-xl border border-ink-700 bg-ink-900/60 p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-3 text-sm">
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Plan ID</p>
+          <p class="hash mt-1">P-v032-audit</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Chain</p>
+          <p class="hash mt-1">{chainID}</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Contract</p>
+          <p class="hash mt-1">{contractAddress}</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Verdict</p>
+          <p class="mt-1 inline-flex items-center gap-2 px-2 py-0.5 rounded border verdict-escalate text-xs uppercase tracking-wider font-mono">
+            Escalate
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS GRID -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
+        {stats.map((s) => (
+          <div>
+            <p class="text-xs uppercase tracking-[0.16em] text-ink-400 font-mono">{s.k}</p>
+            <p class="mt-2 font-display text-3xl text-ink-50 font-semibold">{s.v}</p>
+            <p class="mt-1 text-xs text-ink-400 leading-snug">{s.foot}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- REPUTATION LEADERBOARD (snapshot) -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="flex items-baseline justify-between gap-4 mb-6">
+        <div>
+          <h2 class="font-display text-2xl font-semibold text-ink-50 tracking-tight">Final on-chain reputation</h2>
+          <p class="mt-2 text-ink-300 text-sm">
+            After settlement. reviewer-arch wins on volume (11 filings); adversary-alpha is a close
+            second despite filing only 5 — the Critical-and-Warning concentration paid more per finding.
+            That's the incentive layer working as designed.
+          </p>
+        </div>
+        <a href="/leaderboard" class="text-sm text-verdict-adversary hover:text-verdict-approve font-mono">
+          live leaderboard →
+        </a>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-ink-700 bg-ink-900/40">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-ink-700 text-ink-300">
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Rank</th>
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Agent</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">Balance</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">TP</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">FP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reputation.map((r) => (
+              <tr class="border-b border-ink-800 last:border-0">
+                <td class="px-5 py-3 text-ink-300 font-mono">{r.rank}</td>
+                <td class="px-5 py-3 font-medium text-ink-50">{r.agent}</td>
+                <td class="px-5 py-3 text-right text-ink-100 font-mono">{r.balance}</td>
+                <td class="px-5 py-3 text-right text-verdict-approve font-mono">{r.tp}</td>
+                <td class="px-5 py-3 text-right text-ink-400 font-mono">0</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 grid sm:grid-cols-2 gap-4 text-xs text-ink-400 font-mono">
+        <a href={`${explorerBase}/${commitTx}`} target="_blank" rel="noopener" class="flex items-start gap-2 hover:text-ink-100">
+          <span class="text-ink-500 shrink-0">commit_tx ↗</span>
+          <span class="hash">{commitTx}</span>
+        </a>
+        <a href={`${explorerBase}/${resolveTx}`} target="_blank" rel="noopener" class="flex items-start gap-2 hover:text-ink-100">
+          <span class="text-ink-500 shrink-0">resolve_tx ↗</span>
+          <span class="hash">{resolveTx}</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABBED REPORTS -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="mb-8">
+        <h2 class="font-display text-2xl font-semibold text-ink-50 tracking-tight">The five reports</h2>
+        <p class="mt-2 text-ink-300 max-w-2xl">
+          Synthesis first, then each lens reviewer, then the adversary. Every report was filed verbatim,
+          signed by the filing agent, and settled on-chain.
+        </p>
+      </div>
+
+      <div role="tablist" aria-label="Audit reports" class="flex flex-wrap gap-1 border-b border-ink-800 mb-8">
+        {sections.map((s, i) => (
+          <button
+            type="button"
+            role="tab"
+            data-tab-target={s.id}
+            aria-selected={i === 0 ? "true" : "false"}
+            class={`px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors ${
+              i === 0
+                ? "border-verdict-adversary text-ink-50"
+                : "border-transparent text-ink-300 hover:text-ink-100"
+            }`}
+          >
+            {s.tab}
+          </button>
+        ))}
+      </div>
+
+      {sections.map((s, i) => (
+        <article
+          data-tab-panel={s.id}
+          class={`prose-tribunal ${i === 0 ? "" : "hidden"}`}
+        >
+          <s.Content />
+        </article>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<script is:inline>
+  (() => {
+    const tabs = document.querySelectorAll("[data-tab-target]");
+    const panels = document.querySelectorAll("[data-tab-panel]");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.getAttribute("data-tab-target");
+        tabs.forEach((t) => {
+          const active = t === tab;
+          t.setAttribute("aria-selected", active ? "true" : "false");
+          t.classList.toggle("border-verdict-adversary", active);
+          t.classList.toggle("text-ink-50", active);
+          t.classList.toggle("border-transparent", !active);
+          t.classList.toggle("text-ink-300", !active);
+        });
+        panels.forEach((p) => {
+          p.classList.toggle("hidden", p.getAttribute("data-tab-panel") !== target);
+        });
+      });
+    });
+  })();
+</script>
