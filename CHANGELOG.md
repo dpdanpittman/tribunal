@@ -9,14 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Public site at `tribunal.mabus.ai`** (`site/`) — Astro 4 + Tailwind. Hero + methodology, the four canonical docs rendered from `docs/*.md`, case studies for each Tribunal self-audit, and a live on-chain leaderboard that queries the deployed contract on `xion-testnet-2` client-side. Multi-stage `Dockerfile` (Astro build → nginx), k8s manifests in `site/k8s/`, `site/deploy.sh` builds + deploys to the zaphod node via `hostPort`. Caddy on zaphod reverse-proxies `tribunal.mabus.ai` to `localhost:3400`.
+- **Public site at `tribunal.mabus.ai`** (`site/`) — Astro 4 + Tailwind. Hero + methodology, the canonical docs rendered from `docs/*.md`, case studies for each Tribunal self-audit, and a live on-chain leaderboard that queries the deployed contract on `xion-testnet-2` client-side. Multi-stage `Dockerfile` (Astro build → nginx), k8s manifests in `site/k8s/`, `site/deploy.sh` builds + deploys to the zaphod node via `hostPort`. Caddy on zaphod reverse-proxies `tribunal.mabus.ai` to `localhost:3400`.
 - **Testnet deployment** at `xion1rw526nsectccl335slusux4szcpk77h23y8tyg5g9drhkhnhhnss9cps84` on `xion-testnet-2`. Same contract, public chain. Audits replayed on testnet so anyone can verify the commit + resolve txs via the LCD.
-- **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. v0.3.4 must change the primitive, not refine it. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
+- **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
-### v0.3.4 scope (next release)
+## [0.3.4] — 2026-05-14
 
-Audit-driven fix release, motivated by P-v033-audit. The Critical (F-ARCH-301 + F-SEC-302) won't be fixed by widening the regex — that's the convergence trap the methodology surfaced. Per F-NEW-403, v0.3.4 replaces the parse-error-string recovery primitive with a contract-state-query primitive: on batch failure, query the contract's post-state and reconcile from structured data instead of regex-matching `raw_log`. Also lands F-NEW-401 (per-plan ctx isolation in `SyncAll`), F-NEW-402 (`BatchMixedPlanID` handling — subsumed by the new primitive), F-ARCH-303 (CLI rendering partial sync results), F-ARCH-306 (test expansion), F-ARCH-307 (recovery loop attempt cap), and F-SEC-303 (`looksLikeTestChain` substring bypass).
+Audit-driven fix release. P-v033-audit's adversary identified that the methodology was not converging on a fixed point — each fix was a more precise version of the same primitive (parse-the-LCD's-error-string), narrower than the contract's true error grammar. v0.3.4 changes the primitive, not the regex. No contract changes; no migration. Audit report: `.tribunal/reports/P-v033-audit/SYNTHESIS.md`.
+
+### Fixed
+
+- **Recovery via structured contract-state query, not regex.** `submitCommitBatch` and `submitResolveBatch` no longer parse the contract's `raw_log` for `FindingAlreadyCommitted` / `FindingAlreadyResolved` strings. On batch rejection they re-run `preflight()` — the same parallel contract-state query primitive the success path uses — get back an authoritative map of which entries are now committed/resolved, filter the batch accordingly, and retry. The regex helpers (`matchDuplicate`, `alreadyCommittedRE`, `alreadyResolvedRE`) are deleted entirely. This resolves F-ARCH-301 (regex narrower than `validate_id_field` permits — broke on slash/space in identifiers), F-SEC-302 (`TrimRight` corrupted legitimate IDs containing dots/quotes/parens), F-NEW-402 (regex didn't recognize `BatchMixedPlanID`), and F-SEC-301 (hostile LCD could choose which entry to drop via `raw_log`) — all four collapse into one architectural pivot. ([F-NEW-403])
+- **`SyncAll` per-plan ctx isolation.** Each plan now runs under a `context.WithTimeout(ctx, perPlanSyncBudget)` (90s default), so one slow plan's recovery cycle can't starve subsequent plans of the caller's outer ctx. T7's "continue past per-plan failure" now works at the timing layer as well as the data layer. ([F-NEW-401])
+- **`tribunal chain sync` renders partial results before erroring.** v0.3.3's `errors.Join` aggregation produced partial results on failure but the CLI discarded them; v0.3.4 prints what landed before returning the error. ([F-ARCH-303])
+- **`looksLikeTestChain` is token-aware.** v0.3.3's `strings.Contains(id, "test")` false-positived on `xion-mainnet-test-fork` and similar hostile/borderline chain ids. v0.3.4 splits on `-`, treats `mainnet`/`main`/`prod`/`production` as always-wins, then checks `devnet`/`testnet`/`test`/`dev`/`local` as discrete tokens. Applied in both `internal/chain/client.go` and `cmd/tribunal-seed/main.go`. New test `TestLooksLikeTestChain_TokenAware` covers 11 cases including the hostile substring patterns. ([F-SEC-303])
+- **Recovery loop bounded by a constant, not `len(batch)`.** v0.3.3 retried up to `len(commits)` times, which let a hostile LCD amplify gas consumption against large batches. v0.3.4 caps at `maxRecoveryAttempts = 5` regardless of batch size — five retries handles every realistic duplicate scenario; the remainder surfaces as an explicit error. ([F-ARCH-307])
+- **`preflight_concurrency` is operator-tunable.** New `preflight_concurrency` field in `chain.yaml`; defaults to 8 when unset. Tune up on low-latency local LCDs; tune down on high-RTT or rate-limited LCDs. ([F-PERF-301])
+
+### Tests
+
+- New `TestLooksLikeTestChain_TokenAware` pins the token-aware test-chain heuristic across 11 cases (standard testnet/devnet/mainnet, hostile substring patterns like `xion-mainnet-test-fork` and `xion-test-mainnet-fork`, embedded substrings inside other words like `untested`/`attestation`).
+- `TestMatchDuplicate_CommitErrorParsing` removed; the regex it tested no longer exists.
+
+### Internal
+
+- `sync.go` package doc updated to describe the structured-query recovery model.
+- `regexp` and `strings` imports removed from `internal/chain/sync.go`.
 
 ## [0.3.3] — 2026-05-13
 

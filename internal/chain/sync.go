@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,10 +30,13 @@ type KeyResolver interface {
 //  3. Pre-flight chain queries (parallel, bounded) to skip entries that
 //     are already on-chain. Fast path for normal retries.
 //  4. Submit batched CommitFindingBatch and ResolveFindingBatch via
-//     submitCommitBatch / submitResolveBatch, which absorb pre-flight
-//     false-negatives by parsing the contract's `FindingAlreadyCommitted`
-//     / `FindingAlreadyResolved` errors and retrying the batch with the
-//     offending entry dropped.
+//     submitCommitBatch / submitResolveBatch. On rejection these query
+//     the contract's actual state (same primitive as pre-flight),
+//     filter out entries the contract now considers committed/resolved,
+//     and retry. v0.3.4 switched from regex-on-raw_log to this
+//     contract-state-query primitive because the regex approach was
+//     narrower than the contract's identifier grammar (P-v033-audit
+//     F-ARCH-301) and trusted LCD-sourced text (F-SEC-301).
 type Sync struct {
 	Client *Client
 	Keys   KeyResolver
@@ -52,10 +53,18 @@ type SyncResult struct {
 	QueueDrainedCount int
 }
 
-// preflightConcurrency caps the number of in-flight LCD pre-flight queries.
-// Keeps a large batch (say 100 findings) from saturating the LCD while
-// still cutting latency significantly vs. the serial approach in v0.3.2.
-const preflightConcurrency = 8
+// defaultPreflightConcurrency caps the number of in-flight LCD pre-flight
+// queries when no operator-configured value is set. Keeps a large batch
+// (say 100 findings) from saturating the LCD while still cutting latency
+// vs. the serial approach in v0.3.2.
+const defaultPreflightConcurrency = 8
+
+// perPlanSyncBudget is the wallclock budget allotted to a single plan
+// inside SyncAll. SyncAll derives a child ctx per plan from this constant
+// so that one slow plan's recovery cycle doesn't starve subsequent plans
+// of the caller's outer ctx. The caller's outer ctx still binds — this
+// is the additional per-plan cap on top of it. P-v033-audit's F-NEW-401.
+const perPlanSyncBudget = 90 * time.Second
 
 // CommitRealtime submits a single FindingCommit immediately and, on
 // failure, persists the message to the retry queue so plan-close sync
@@ -240,7 +249,10 @@ func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]stru
 
 	resCh := make(chan result, len(ids))
 	var wg sync.WaitGroup
-	workers := preflightConcurrency
+	workers := defaultPreflightConcurrency
+	if s.Client != nil && s.Client.Config() != nil && s.Client.Config().PreflightConcurrency > 0 {
+		workers = s.Client.Config().PreflightConcurrency
+	}
 	if len(ids) < workers {
 		workers = len(ids)
 	}
@@ -297,25 +309,44 @@ func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]stru
 	return
 }
 
-// alreadyCommittedRE captures the contract's FindingAlreadyCommitted error
-// payload so the recovery layer can identify which finding to drop.
-var alreadyCommittedRE = regexp.MustCompile(`finding ([^/]+)/([^ ]+) already committed`)
+// maxRecoveryAttempts caps the number of batch-level retries the recovery
+// layer will perform regardless of batch size. v0.3.3 bounded recovery by
+// len(batch), which let a hostile LCD amplify gas consumption against
+// large batches; v0.3.4 caps at a constant so worst-case cost is bounded.
+// Five attempts handles every realistic partial-failure scenario: each
+// retry drops at least one entry, so five retries can absorb up to ~5
+// duplicate findings in any single sync, with the remainder surfacing as
+// an explicit error for operator inspection.
+const maxRecoveryAttempts = 5
 
-// alreadyResolvedRE captures the contract's FindingAlreadyResolved error.
-var alreadyResolvedRE = regexp.MustCompile(`finding ([^/]+)/([^ ]+) already resolved`)
-
-// submitCommitBatch posts a commit_finding_batch and, on
-// "FindingAlreadyCommitted" rejection, drops the offending entry and
-// retries. Bounded by len(commits) retries (each retry guarantees at
-// least one entry leaves the batch), so termination is guaranteed.
+// submitCommitBatch posts a commit_finding_batch and, on rejection,
+// queries the contract for actual per-finding state and retries with
+// duplicates filtered out. Bounded by maxRecoveryAttempts.
+//
+// v0.3.4: replaced v0.3.3's regex-on-raw_log recovery with a structured
+// contract-state-query primitive. The old approach parsed the contract's
+// FindingAlreadyCommitted error string with a regex tied to a specific
+// identifier character set, which had two structural problems:
+//
+//  1. The regex character class didn't agree with the contract's
+//     validate_id_field rules (it rejected slashes in plan_id and spaces
+//     in finding_id, both of which the contract permits) — P-v033-audit's
+//     F-ARCH-301 Critical.
+//  2. The raw_log was LCD-sourced text; a hostile LCD could choose which
+//     finding the operator drops on retry — P-v033-audit's F-SEC-301.
+//
+// The new approach: on Execute rejection, re-run the preflight (same
+// primitive used on the success path) to ask the contract authoritatively
+// which findings are now committed. Filter the batch down to the
+// uncommitted set and retry. If the contract's view doesn't differ from
+// the batch (no duplicates), the rejection is for some other reason and
+// we surface it.
 //
 // Returns the final broadcast result, the count of findings actually
-// committed (excludes dropped duplicates), and an error if the batch
-// could not be made to land for some reason other than duplicate
-// rejection.
+// committed (excludes filtered duplicates), and an error if the batch
+// could not be made to land for a reason unrelated to duplicates.
 func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []FindingCommit) (*BroadcastResult, int, error) {
-	originalLen := len(commits)
-	for attempt := 0; attempt <= originalLen; attempt++ {
+	for attempt := 0; attempt < maxRecoveryAttempts; attempt++ {
 		if len(commits) == 0 {
 			// Everything in the batch was already on-chain. No tx needed.
 			return nil, 0, nil
@@ -325,33 +356,37 @@ func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []F
 		if err == nil {
 			return br, len(commits), nil
 		}
-		dupID, ok := matchDuplicate(err.Error(), alreadyCommittedRE)
-		if !ok {
-			return br, 0, err
+
+		// Recovery: query the contract for actual state of every entry in
+		// the batch. Anything the contract considers committed gets filtered.
+		ids := map[string]struct{}{}
+		for _, c := range commits {
+			ids[c.FindingID] = struct{}{}
 		}
+		committed, _ := s.preflight(ctx, planID, ids)
 		filtered := commits[:0]
 		for _, c := range commits {
-			if c.FindingID != dupID {
+			if !committed[c.FindingID] {
 				filtered = append(filtered, c)
 			}
 		}
 		if len(filtered) == len(commits) {
-			// Contract reported a duplicate not in our batch. Bail loudly.
-			return br, 0, fmt.Errorf("contract reported duplicate commit %q not in batch: %w", dupID, err)
+			// No duplicates explain the rejection. Surface the underlying error.
+			return br, 0, fmt.Errorf("commit batch rejected and no entries already on-chain: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "tribunal: commit batch recovered from duplicate %s/%s, retrying with %d findings\n",
-			planID, dupID, len(filtered))
+		fmt.Fprintf(os.Stderr, "tribunal: commit batch recovered via state query, dropped %d already-committed, retrying with %d findings\n",
+			len(commits)-len(filtered), len(filtered))
 		commits = filtered
 	}
-	return nil, 0, fmt.Errorf("commit batch exhausted recovery attempts (started=%d)", originalLen)
+	return nil, 0, fmt.Errorf("commit batch exhausted recovery attempts (cap=%d)", maxRecoveryAttempts)
 }
 
 // submitResolveBatch is the resolution-side equivalent of submitCommitBatch.
-// Absorbs FindingAlreadyResolved rejections by dropping the offending entry
-// and retrying. Bounded by len(resCommits) retries.
+// Uses the same structured-query recovery primitive — on rejection, queries
+// the contract for which findings already have resolutions and filters them
+// out of the retry. Bounded by maxRecoveryAttempts.
 func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits []ResolutionCommit) (*BroadcastResult, int, error) {
-	originalLen := len(resCommits)
-	for attempt := 0; attempt <= originalLen; attempt++ {
+	for attempt := 0; attempt < maxRecoveryAttempts; attempt++ {
 		if len(resCommits) == 0 {
 			return nil, 0, nil
 		}
@@ -360,39 +395,28 @@ func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits
 		if err == nil {
 			return br, len(resCommits), nil
 		}
-		dupID, ok := matchDuplicate(err.Error(), alreadyResolvedRE)
-		if !ok {
-			return br, 0, err
+
+		// Recovery via contract-state query. resolved map tells us which
+		// findings already have on-chain resolutions.
+		ids := map[string]struct{}{}
+		for _, r := range resCommits {
+			ids[r.FindingID] = struct{}{}
 		}
+		_, resolved := s.preflight(ctx, planID, ids)
 		filtered := resCommits[:0]
 		for _, r := range resCommits {
-			if r.FindingID != dupID {
+			if !resolved[r.FindingID] {
 				filtered = append(filtered, r)
 			}
 		}
 		if len(filtered) == len(resCommits) {
-			return br, 0, fmt.Errorf("contract reported duplicate resolution %q not in batch: %w", dupID, err)
+			return br, 0, fmt.Errorf("resolve batch rejected and no entries already resolved: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "tribunal: resolve batch recovered from duplicate %s/%s, retrying with %d resolutions\n",
-			planID, dupID, len(filtered))
+		fmt.Fprintf(os.Stderr, "tribunal: resolve batch recovered via state query, dropped %d already-resolved, retrying with %d resolutions\n",
+			len(resCommits)-len(filtered), len(filtered))
 		resCommits = filtered
 	}
-	return nil, 0, fmt.Errorf("resolve batch exhausted recovery attempts (started=%d)", originalLen)
-}
-
-// matchDuplicate inspects an error message for a known "already X"
-// pattern emitted by the contract and returns the offending finding_id.
-// The plan_id capture group is discarded — the caller knows the planID.
-func matchDuplicate(errMsg string, re *regexp.Regexp) (string, bool) {
-	m := re.FindStringSubmatch(errMsg)
-	if len(m) != 3 {
-		return "", false
-	}
-	// Strip any trailing characters from finding_id that the regex's
-	// "[^ ]+" greedily captured but that aren't actually part of the ID
-	// (e.g. wrapping quotes or punctuation in the xiond error text).
-	fid := strings.TrimRight(m[2], "\"',;.)")
-	return fid, fid != ""
+	return nil, 0, fmt.Errorf("resolve batch exhausted recovery attempts (cap=%d)", maxRecoveryAttempts)
 }
 
 // SyncAll groups every entry in the ledger by plan_id and runs SyncPlan
@@ -431,7 +455,14 @@ func (s *Sync) SyncAll(ctx context.Context, lg *ledger.Ledger) ([]*SyncResult, e
 	var out []*SyncResult
 	var errs []error
 	for _, planID := range planOrder {
-		res, err := s.SyncPlan(ctx, planID, planFindings[planID], planResolutions[planID])
+		// Per-plan ctx with bounded budget so a slow plan's recovery cycle
+		// can't starve subsequent plans of the caller's outer ctx
+		// (P-v033-audit F-NEW-401). The outer ctx still binds: if the
+		// caller's ctx is shorter than perPlanSyncBudget, this WithTimeout
+		// resolves to the caller's deadline.
+		planCtx, planCancel := context.WithTimeout(ctx, perPlanSyncBudget)
+		res, err := s.SyncPlan(planCtx, planID, planFindings[planID], planResolutions[planID])
+		planCancel()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("plan %s: %w", planID, err))
 			continue

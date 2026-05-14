@@ -121,10 +121,25 @@ func main() {
 
 // looksLikeTestChain mirrors the same heuristic the chain.Client warning
 // uses. Mainnet-like chain ids are refused unless --allow-prod is set.
+//
+// v0.3.4: token-aware. Substring matching false-positived on hostile or
+// borderline names like `xion-mainnet-test-fork` (P-v033-audit F-SEC-303).
+// Explicit `mainnet`/`main`/`prod`/`production` tokens always win; only
+// then do we check for test-marker tokens as discrete dash-separated parts.
 func looksLikeTestChain(chainID string) bool {
 	id := strings.ToLower(chainID)
-	return strings.Contains(id, "devnet") ||
-		strings.Contains(id, "testnet") ||
-		strings.Contains(id, "test") ||
-		strings.Contains(id, "local")
+	parts := strings.Split(id, "-")
+	for _, p := range parts {
+		switch p {
+		case "mainnet", "main", "prod", "production":
+			return false
+		}
+	}
+	for _, p := range parts {
+		switch p {
+		case "devnet", "testnet", "test", "dev", "local":
+			return true
+		}
+	}
+	return false
 }

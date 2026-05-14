@@ -51,14 +51,30 @@ func New(cfg *Config) *Client {
 
 // looksLikeTestChain reports whether the chain id looks like a dev /
 // test environment. Used to decide whether to emit the keyring warning.
-// Chain ids containing "devnet", "testnet", or "test" are considered
-// non-production; anything else triggers the warning.
+//
+// v0.3.4 — token-aware instead of substring. v0.3.3's substring check
+// false-positived on hostile/borderline chain ids like
+// `xion-mainnet-test-fork` (P-v033-audit F-SEC-303). The new behavior:
+//   - Explicit `mainnet` / `main` / `prod` / `production` markers ALWAYS
+//     win (return false), regardless of whether other markers also match.
+//   - Otherwise, look for `devnet` / `testnet` / `test` / `dev` / `local`
+//     as discrete dash-separated tokens, not substrings.
 func looksLikeTestChain(chainID string) bool {
 	id := strings.ToLower(chainID)
-	return strings.Contains(id, "devnet") ||
-		strings.Contains(id, "testnet") ||
-		strings.Contains(id, "test") ||
-		strings.Contains(id, "local")
+	parts := strings.Split(id, "-")
+	for _, p := range parts {
+		switch p {
+		case "mainnet", "main", "prod", "production":
+			return false
+		}
+	}
+	for _, p := range parts {
+		switch p {
+		case "devnet", "testnet", "test", "dev", "local":
+			return true
+		}
+	}
+	return false
 }
 
 // Config returns the active configuration.

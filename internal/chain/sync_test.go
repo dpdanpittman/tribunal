@@ -12,66 +12,33 @@ import (
 	"github.com/dpdanpittman/tribunal/internal/ledger"
 )
 
-// TestMatchDuplicate_CommitErrorParsing verifies the regex that drives
-// post-broadcast batch recovery actually extracts the finding_id out of
-// the contract's `FindingAlreadyCommitted` / `FindingAlreadyResolved`
-// errors. If this regex drifts and these tests don't catch it, sync's
-// recovery layer silently degrades to "give up on the whole batch" —
-// which is exactly the v0.3.2 defect F-NEW-301 surfaced.
-func TestMatchDuplicate_CommitErrorParsing(t *testing.T) {
+// TestLooksLikeTestChain_TokenAware verifies the v0.3.4 token-aware
+// implementation correctly classifies hostile / borderline chain ids.
+// v0.3.3 used `strings.Contains(id, "test")` which false-positived on
+// names like `xion-mainnet-test-fork` (P-v033-audit F-SEC-303).
+func TestLooksLikeTestChain_TokenAware(t *testing.T) {
 	tests := []struct {
-		name   string
-		errMsg string
-		re     string
-		wantID string
-		wantOK bool
+		chainID string
+		want    bool
+		reason  string
 	}{
-		{
-			name:   "already committed plain",
-			errMsg: "commit batch (plan=P-1, n=2): wait for inclusion: tx failed on-chain (code=18): finding P-1/F-99 already committed",
-			re:     "commit",
-			wantID: "F-99",
-			wantOK: true,
-		},
-		{
-			name:   "already committed with dotted hash",
-			errMsg: "commit batch: finding P-abc/F-sec.201 already committed",
-			re:     "commit",
-			wantID: "F-sec.201",
-			wantOK: true,
-		},
-		{
-			name:   "already resolved",
-			errMsg: "resolve batch (plan=P-7, n=1): tx failed on-chain: finding P-7/F-1 already resolved",
-			re:     "resolve",
-			wantID: "F-1",
-			wantOK: true,
-		},
-		{
-			name:   "unrelated error, no match",
-			errMsg: "account sequence mismatch, expected 4, got 3",
-			re:     "commit",
-			wantOK: false,
-		},
-		{
-			name:   "wrong regex against committed message",
-			errMsg: "finding P-1/F-1 already committed",
-			re:     "resolve",
-			wantOK: false,
-		},
+		{"xion-testnet-2", true, "standard testnet"},
+		{"xion-devnet-1", true, "standard devnet"},
+		{"xion-mainnet-1", false, "standard mainnet"},
+		{"xion-mainnet-test-fork", false, "mainnet token wins over substring 'test'"},
+		{"xion-test-mainnet-fork", false, "mainnet token still wins regardless of position"},
+		{"xion-prod-1", false, "prod marker"},
+		{"local-devnet", true, "local + devnet both signal test"},
+		{"my-attestation-chain", false, "substring 'test' inside 'attestation' does not match"},
+		{"some-untested-network", false, "substring 'test' inside 'untested' does not match"},
+		{"production", false, "production marker"},
+		{"", false, "empty"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var re = alreadyCommittedRE
-			if tt.re == "resolve" {
-				re = alreadyResolvedRE
-			}
-			gotID, gotOK := matchDuplicate(tt.errMsg, re)
-			if gotOK != tt.wantOK {
-				t.Fatalf("ok=%v want=%v (id=%q errMsg=%q)", gotOK, tt.wantOK, gotID, tt.errMsg)
-			}
-			if gotID != tt.wantID {
-				t.Fatalf("id=%q want=%q", gotID, tt.wantID)
+		t.Run(tt.chainID, func(t *testing.T) {
+			got := looksLikeTestChain(tt.chainID)
+			if got != tt.want {
+				t.Fatalf("looksLikeTestChain(%q) = %v, want %v (%s)", tt.chainID, got, tt.want, tt.reason)
 			}
 		})
 	}

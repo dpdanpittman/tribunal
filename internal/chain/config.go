@@ -58,6 +58,11 @@ type Config struct {
 	// OutcomeRewardMultiplier mirrors the contract instantiation parameter
 	// so the client can preview rewards without an extra round-trip. Default 2.
 	OutcomeRewardMultiplier uint64 `yaml:"outcome_reward_multiplier"`
+	// PreflightConcurrency is the per-deployment cap on parallel LCD queries
+	// during sync's preflight stage. Defaults to 8 when zero. Tune up on
+	// low-latency local LCDs; tune down on high-RTT or rate-limited LCDs.
+	// P-v033-audit F-PERF-301.
+	PreflightConcurrency int `yaml:"preflight_concurrency,omitempty"`
 }
 
 // LoadConfig reads ~/.tribunal/chain.yaml (or path if non-empty) and

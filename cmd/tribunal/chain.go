@@ -214,12 +214,16 @@ for the plan are drained into the same transaction.`,
 				return nil
 			}
 
+			// v0.3.4 / P-v033-audit F-ARCH-303: SyncAll's `errors.Join`
+			// aggregation produces partial results even on error. Render
+			// them first so the operator sees what landed before seeing
+			// what failed.
 			results, err := sync.SyncAll(ctx, lg)
-			if err != nil {
-				return err
-			}
 			for _, r := range results {
 				printSyncResult(r)
+			}
+			if err != nil {
+				return err
 			}
 			return nil
 		},
