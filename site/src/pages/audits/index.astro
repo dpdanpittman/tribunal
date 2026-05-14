@@ -3,6 +3,14 @@ import Base from "../../layouts/Base.astro";
 
 const audits = [
   {
+    slug: "p-v034-audit",
+    title: "The convergence test",
+    date: "2026-05-14",
+    verdict: "Escalate",
+    summary: "Third audit. v0.3.4 shipped the architectural pivot P-v033's adversary prescribed. Test result: pivoted but not converged — the LCD-as-truth-oracle defect family persists in the new primitive, AND the adversary surfaced a Critical that's been latent across all three audit cycles. The lens trio's diff-bounded scope is the structural blind spot adversarial review exists to fill.",
+    findings: { critical: 2, warning: 6, suggestion: 15 },
+  },
+  {
     slug: "p-v033-audit",
     title: "Does the methodology converge?",
     date: "2026-05-13 (evening)",
@@ -29,8 +37,9 @@ const audits = [
       </h1>
       <p class="mt-6 text-lg text-ink-300 max-w-2xl leading-relaxed">
         Each report is signed by the filing agent's keypair and settled on <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">xion-testnet-2</code>.
-        Two self-audit cycles in; the adversary's meta-finding F-NEW-403 is what motivated the
-        <a href="/docs/convergence" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">convergence</a> methodology extension.
+        Three self-audit cycles in. The adversary's running thesis (P-v033 F-NEW-403, P-v034 F-NEW-505): the methodology
+        is converging on defect <em>shapes</em> but not on defect <em>families</em>. v0.4 has to address families
+        architecturally — that's the <a href="/docs/convergence" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">convergence</a> methodology extension at work.
       </p>
     </div>
   </section>

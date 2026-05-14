@@ -156,14 +156,15 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="rounded-2xl border border-ink-700 bg-ink-900/40 p-10 sm:p-14">
         <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight max-w-2xl">
-          Two self-audits in. Does the methodology converge?
+          Three self-audits in. The convergence answer is interesting.
         </h2>
         <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
-          v0.3.2 was audited by Tribunal; the adversary caught a Critical every cooperative lens missed.
-          v0.3.3 shipped the fixes — and Tribunal then audited v0.3.3. The adversary's verdict on its
-          own methodology: <em>not converging yet, here's the architectural pivot</em>. v0.3.4 shipped
-          the pivot — the regex-on-error-text recovery primitive was replaced by a structured contract-state
-          query. P-v034-audit will tell us whether the methodology converged on this defect class.
+          v0.3.4 shipped the architectural pivot P-v033's adversary prescribed (replace regex-on-error-text
+          with a structured contract-state query). P-v034 tested whether it converged. Result:
+          <em>pivoted but not converged</em>. The methodology converges on specific defect SHAPES but the
+          underlying defect FAMILIES persist in new primitives — and the adversary surfaced a Critical
+          that had been latent in older code across all three cycles. v0.4 must close defect families
+          architecturally, not patch their instances.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="/audits/p-v033-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
