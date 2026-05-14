@@ -20,11 +20,11 @@ import (
 // which is exactly the v0.3.2 defect F-NEW-301 surfaced.
 func TestMatchDuplicate_CommitErrorParsing(t *testing.T) {
 	tests := []struct {
-		name    string
-		errMsg  string
-		re      string
-		wantID  string
-		wantOK  bool
+		name   string
+		errMsg string
+		re     string
+		wantID string
+		wantOK bool
 	}{
 		{
 			name:   "already committed plain",

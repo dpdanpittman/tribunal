@@ -19,12 +19,12 @@ import (
 )
 
 type entry struct {
-	Severity   string
-	Category   string
-	FindingID  string
-	ClaimHash  string
-	ClaimURI   string
-	Summary    string
+	Severity    string
+	Category    string
+	FindingID   string
+	ClaimHash   string
+	ClaimURI    string
+	Summary     string
 	FilingAgent string
 }
 
