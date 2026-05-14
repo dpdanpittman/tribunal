@@ -41,7 +41,7 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 pt-20 pb-24">
       <div class="max-w-3xl">
         <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">
-          v0.3.3 · audit-driven · public ledger
+          v0.3.4 · audit-driven · public ledger
         </p>
         <h1 class="font-display text-5xl sm:text-6xl font-semibold text-ink-50 tracking-tight leading-[1.05]">
           Ship LLM code <span class="text-verdict-adversary">without</span> inheriting LLM failure modes.
@@ -161,8 +161,9 @@ const proofPoints = [
         <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
           v0.3.2 was audited by Tribunal; the adversary caught a Critical every cooperative lens missed.
           v0.3.3 shipped the fixes — and Tribunal then audited v0.3.3. The adversary's verdict on its
-          own methodology: <em>not converging yet, here's the architectural pivot</em>. The audit is the
-          motivating evidence for the <a href="/docs/convergence" class="text-verdict-adversary hover:text-verdict-approve underline underline-offset-2">convergence</a> design.
+          own methodology: <em>not converging yet, here's the architectural pivot</em>. v0.3.4 shipped
+          the pivot — the regex-on-error-text recovery primitive was replaced by a structured contract-state
+          query. P-v034-audit will tell us whether the methodology converged on this defect class.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="/audits/p-v033-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">

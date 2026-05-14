@@ -117,6 +117,12 @@ const reputation = [
           and each version has been narrower than the contract's true error grammar. The adversary's prescription for v0.3.4:
           stop parsing the contract's response text. Replace it with a contract-state-query primitive that doesn't depend on text format.
         </p>
+        <p class="mt-4 text-ink-200 max-w-3xl leading-relaxed">
+          <strong class="text-verdict-approve">v0.3.4 (commit <code class="hash bg-ink-800/60 px-1 rounded">fb37c3c</code>) shipped that pivot.</strong>
+          The regex helpers were deleted; recovery now re-uses the same parallel contract-state-query primitive as preflight.
+          Five independently-filed defects (F-NEW-403, F-ARCH-301, F-SEC-302, F-NEW-402, F-SEC-301) collapsed into one architectural change.
+          P-v034-audit will tell us whether the methodology converged on this defect class.
+        </p>
         <p class="mt-4 text-ink-300 max-w-3xl leading-relaxed text-sm">
           The convergence design itself becomes a methodology extension. See <a href="/docs/convergence" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">convergence</a> for the loop spec and ADR-0001 for the v0.4 implementation plan.
         </p>
