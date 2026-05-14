@@ -43,7 +43,7 @@ if (!doc) {
   return Astro.redirect("/docs");
 }
 
-const orderedSlugs = ["methodology", "incentive-mechanism", "on-chain-protocol", "installation"];
+const orderedSlugs = ["methodology", "incentive-mechanism", "on-chain-protocol", "installation", "convergence"];
 const allSlugs = Object.keys(docMap).sort((a, b) => {
   const ai = orderedSlugs.indexOf(a);
   const bi = orderedSlugs.indexOf(b);

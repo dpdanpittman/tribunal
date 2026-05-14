@@ -3,16 +3,24 @@ import Base from "../../layouts/Base.astro";
 
 const audits = [
   {
+    slug: "p-v033-audit",
+    title: "Does the methodology converge?",
+    date: "2026-05-13 (evening)",
+    verdict: "Escalate",
+    summary: "Second self-audit. v0.3.3 fixed everything P-v032-audit surfaced — but the adversary identified a structural recursion: each fix is a narrower version of the same primitive. The methodology is not converging on a fixed point yet. v0.3.4 must change the primitive.",
+    findings: { critical: 1, warning: 9, suggestion: 11 },
+  },
+  {
     slug: "p-v032-audit",
     title: "Tribunal reviews v0.3.2",
     date: "2026-05-13",
     verdict: "Escalate",
-    summary: "First time Tribunal audited its own release. Trio caught surface defects; adversary caught a Critical correctness defect every cooperative lens missed. v0.3.3 fixes shipped same day.",
+    summary: "First time Tribunal audited its own release. Trio caught surface defects; adversary caught a Critical correctness defect every cooperative lens missed (F-NEW-301, batched-tx atomicity). v0.3.3 fixes shipped same day.",
     findings: { critical: 3, warning: 12, suggestion: 15 },
   },
 ];
 ---
-<Base title="Audits" description="Public audit reports settled on Burnt XION.">
+<Base title="Audits" description="Public audit reports settled on Burnt XION testnet.">
   <section class="border-b border-ink-800/80">
     <div class="max-w-4xl mx-auto px-6 pt-20 pb-12">
       <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">Audits</p>
@@ -20,8 +28,9 @@ const audits = [
         Every audit is on the public record.
       </h1>
       <p class="mt-6 text-lg text-ink-300 max-w-2xl leading-relaxed">
-        Each report is signed by the filing agent's keypair and settled on-chain. The audit page links
-        each finding to its commit + resolution tx so the reputation impact is independently verifiable.
+        Each report is signed by the filing agent's keypair and settled on <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">xion-testnet-2</code>.
+        Two self-audit cycles in; the adversary's meta-finding F-NEW-403 is what motivated the
+        <a href="/docs/convergence" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">convergence</a> methodology extension.
       </p>
     </div>
   </section>
@@ -39,7 +48,7 @@ const audits = [
                 <span class="font-mono text-xs text-ink-400">{a.date}</span>
               </div>
               <p class="mt-2 text-ink-300 leading-relaxed">{a.summary}</p>
-              <div class="mt-4 flex items-center gap-3 text-xs font-mono">
+              <div class="mt-4 flex flex-wrap items-center gap-3 text-xs font-mono">
                 <span class="px-2 py-0.5 rounded border verdict-escalate uppercase tracking-wider">{a.verdict}</span>
                 <span class="text-verdict-critical">{a.findings.critical} critical</span>
                 <span class="text-verdict-warn">{a.findings.warning} warning</span>

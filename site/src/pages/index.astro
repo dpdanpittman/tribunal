@@ -29,10 +29,10 @@ const pillars = [
 ];
 
 const proofPoints = [
-  { metric: "30", label: "findings filed in the self-audit (P-v032-audit), settled in one tx pair." },
-  { metric: "3.4s", label: "wall time for the 30-finding commit + resolve batch on xion-devnet-1." },
-  { metric: "<15min", label: "full review pass: trio + adversary + on-chain settlement." },
-  { metric: "1", label: "Critical defect the adversary caught that all three lens reviewers missed." },
+  { metric: "2", label: "self-audit cycles run; both surfaced a Critical the adversary alone caught." },
+  { metric: "51", label: "findings filed across the two audits, all settled publicly on xion-testnet-2." },
+  { metric: "<15min", label: "wall time per full review pass: trio + adversary + on-chain settlement." },
+  { metric: "F-NEW-403", label: "adversary's meta-finding that motivated the convergence methodology extension." },
 ];
 ---
 <Base title="Tribunal">
@@ -156,16 +156,20 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="rounded-2xl border border-ink-700 bg-ink-900/40 p-10 sm:p-14">
         <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight max-w-2xl">
-          The methodology has reviewed its own release.
+          Two self-audits in. Does the methodology converge?
         </h2>
         <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
-          Tribunal v0.3.2 was audited by Tribunal v0.3.2. The trio caught what was on the surface; the
-          adversary caught a Critical correctness defect every cooperative lens missed. The fixes
-          shipped as v0.3.3 the same day, on-chain reputation settled, audit report public.
+          v0.3.2 was audited by Tribunal; the adversary caught a Critical every cooperative lens missed.
+          v0.3.3 shipped the fixes — and Tribunal then audited v0.3.3. The adversary's verdict on its
+          own methodology: <em>not converging yet, here's the architectural pivot</em>. The audit is the
+          motivating evidence for the <a href="/docs/convergence" class="text-verdict-adversary hover:text-verdict-approve underline underline-offset-2">convergence</a> design.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="/audits/p-v032-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
-            Read the case study →
+          <a href="/audits/p-v033-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
+            Read the second audit →
+          </a>
+          <a href="/audits" class="px-5 py-2.5 rounded-md border border-ink-700 hover:border-ink-500 text-ink-100 hover:text-ink-50 transition-colors">
+            All audits
           </a>
           <a href="/leaderboard" class="px-5 py-2.5 rounded-md border border-ink-700 hover:border-ink-500 text-ink-100 hover:text-ink-50 transition-colors">
             Live leaderboard

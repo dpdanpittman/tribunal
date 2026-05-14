@@ -1,0 +1,241 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const reports = import.meta.glob<{ Content: any }>(
+  "../../../../.tribunal/reports/P-v033-audit/*.md",
+  { eager: true }
+);
+
+const order = ["SYNTHESIS", "reviewer-arch", "reviewer-sec", "reviewer-perf", "adversary"];
+const labels: Record<string, { tab: string; accent: string }> = {
+  SYNTHESIS:       { tab: "Synthesis",    accent: "verdict-adversary" },
+  "reviewer-arch": { tab: "Architecture", accent: "verdict-approve" },
+  "reviewer-sec":  { tab: "Security",     accent: "verdict-warn" },
+  "reviewer-perf": { tab: "Performance",  accent: "verdict-approve" },
+  adversary:       { tab: "Adversary",    accent: "verdict-critical" },
+};
+
+const sections: { id: string; Content: any; tab: string; accent: string }[] = [];
+for (const path in reports) {
+  const m = path.match(/\/([^/]+)\.md$/);
+  if (!m) continue;
+  const id = m[1];
+  const meta = labels[id];
+  if (!meta) continue;
+  sections.push({ id, Content: (reports[path] as any).Content, tab: meta.tab, accent: meta.accent });
+}
+sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+
+const contractAddress = "xion1rw526nsectccl335slusux4szcpk77h23y8tyg5g9drhkhnhhnss9cps84";
+const chainID = "xion-testnet-2";
+const commitTx = "5126E66EAC45722EB008A5A497275701364DC721B0A818C6E23ACCD81B971DB8";
+const resolveTx = "F2C0758CC2640DFD5BE4E7BECBF3C57E8C16FCE2AA38AE51B489489AAE0F73F9";
+const explorerBase = "https://explorer.burnt.com/xion-testnet-2/tx";
+
+const stats = [
+  { k: "Findings filed",  v: "21",       foot: "Across trio + adversary, second self-audit cycle." },
+  { k: "Critical",        v: "1",        foot: "F-ARCH-301 — recovery regex narrower than contract identifier semantics." },
+  { k: "Warnings",        v: "9",        foot: "Mix of trio + adversary cross-corpus findings." },
+  { k: "Suggestions",     v: "11",       foot: "Polish + carry-forwards from P-v032-audit." },
+  { k: "Settle time",     v: "14s",      foot: "Single commit_finding_batch + resolve_finding_batch on xion-testnet-2." },
+  { k: "Verdict",         v: "Escalate", foot: "Adversary identified the methodology's own convergence problem." },
+];
+
+// Cumulative reputation across BOTH audits, post-P-v033 settlement.
+const reputation = [
+  { rank: 1, agent: "reviewer-arch",   balance: 232, tp: 18 },
+  { rank: 2, agent: "reviewer-sec",    balance: 192, tp: 16 },
+  { rank: 3, agent: "adversary-alpha", balance: 176, tp:  8 },
+  { rank: 4, agent: "reviewer-perf",   balance: 148, tp:  9 },
+  { rank: 5, agent: "pm-alpha",        balance: 100, tp:  0 },
+];
+---
+<Base title="Audit · P-v033-audit" description="Tribunal reviews v0.3.3. Methodology convergence question answered empirically: not converging yet — recovery primitive must change in v0.3.4.">
+  <!-- HEADER -->
+  <section class="border-b border-ink-800/80 bg-grid">
+    <div class="max-w-6xl mx-auto px-6 pt-16 pb-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-5">
+        Case study · 2026-05-13 (evening)
+      </p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        Does the methodology converge?
+      </h1>
+      <p class="mt-6 text-lg text-ink-300 max-w-3xl leading-relaxed">
+        v0.3.3 fixed everything <a href="/audits/p-v032-audit" class="text-verdict-adversary underline underline-offset-2">P-v032-audit</a>
+        surfaced. Tribunal's second self-audit asks: did iterating with the methodology actually <em>converge</em>, or did
+        v0.3.3's fix introduce a new defect of the same shape? Diff under review: <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">5cc1634^..5cc1634</code>.
+      </p>
+
+      <div class="mt-10 rounded-xl border border-ink-700 bg-ink-900/60 p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-3 text-sm">
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Plan ID</p>
+          <p class="hash mt-1">P-v033-audit</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Chain</p>
+          <p class="hash mt-1">{chainID}</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Contract</p>
+          <p class="hash mt-1">{contractAddress}</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Verdict</p>
+          <p class="mt-1 inline-flex items-center gap-2 px-2 py-0.5 rounded border verdict-escalate text-xs uppercase tracking-wider font-mono">
+            Escalate
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS GRID -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
+        {stats.map((s) => (
+          <div>
+            <p class="text-xs uppercase tracking-[0.16em] text-ink-400 font-mono">{s.k}</p>
+            <p class="mt-2 font-display text-3xl text-ink-50 font-semibold">{s.v}</p>
+            <p class="mt-1 text-xs text-ink-400 leading-snug">{s.foot}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- CONVERGENCE CALLOUT -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="rounded-xl border border-verdict-adversary/30 bg-verdict-adversary/5 p-7 sm:p-10">
+        <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-4">Meta-finding</p>
+        <h2 class="font-display text-2xl sm:text-3xl font-semibold text-ink-50 tracking-tight leading-snug">
+          F-NEW-403: The methodology is not converging on a fixed point.
+        </h2>
+        <p class="mt-5 text-ink-200 max-w-3xl leading-relaxed">
+          Across three audit cycles, each fix has been a more precise version of the same primitive — parse-the-LCD's-error-string —
+          and each version has been narrower than the contract's true error grammar. The adversary's prescription for v0.3.4:
+          stop parsing the contract's response text. Replace it with a contract-state-query primitive that doesn't depend on text format.
+        </p>
+        <p class="mt-4 text-ink-300 max-w-3xl leading-relaxed text-sm">
+          The convergence design itself becomes a methodology extension. See <a href="/docs/convergence" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">convergence</a> for the loop spec and ADR-0001 for the v0.4 implementation plan.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- REPUTATION LEADERBOARD -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="flex items-baseline justify-between gap-4 mb-6">
+        <div>
+          <h2 class="font-display text-2xl font-semibold text-ink-50 tracking-tight">Cumulative on-chain reputation</h2>
+          <p class="mt-2 text-ink-300 text-sm max-w-2xl">
+            Across both audits (P-v032 + P-v033) on <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">xion-testnet-2</code>. reviewer-arch leads on volume
+            (18 TP); adversary-alpha holds 3rd on count but has the highest per-finding stake-concentration in Criticals/Warnings — that's the incentive
+            layer rewarding cross-corpus signal, not diligence.
+          </p>
+        </div>
+        <a href="/leaderboard" class="text-sm text-verdict-adversary hover:text-verdict-approve font-mono">live leaderboard →</a>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-ink-700 bg-ink-900/40">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-ink-700 text-ink-300">
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Rank</th>
+              <th class="text-left px-5 py-3 font-mono uppercase text-xs tracking-wider">Agent</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">Balance</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">TP</th>
+              <th class="text-right px-5 py-3 font-mono uppercase text-xs tracking-wider">FP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reputation.map((r) => (
+              <tr class="border-b border-ink-800 last:border-0">
+                <td class="px-5 py-3 text-ink-300 font-mono">{r.rank}</td>
+                <td class="px-5 py-3 font-medium text-ink-50">{r.agent}</td>
+                <td class="px-5 py-3 text-right text-ink-100 font-mono">{r.balance}</td>
+                <td class="px-5 py-3 text-right text-verdict-approve font-mono">{r.tp}</td>
+                <td class="px-5 py-3 text-right text-ink-400 font-mono">0</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 grid sm:grid-cols-2 gap-4 text-xs text-ink-400 font-mono">
+        <a href={`${explorerBase}/${commitTx}`} target="_blank" rel="noopener" class="flex items-start gap-2 hover:text-ink-100">
+          <span class="text-ink-500 shrink-0">commit_tx ↗</span>
+          <span class="hash">{commitTx}</span>
+        </a>
+        <a href={`${explorerBase}/${resolveTx}`} target="_blank" rel="noopener" class="flex items-start gap-2 hover:text-ink-100">
+          <span class="text-ink-500 shrink-0">resolve_tx ↗</span>
+          <span class="hash">{resolveTx}</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABBED REPORTS -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="mb-8">
+        <h2 class="font-display text-2xl font-semibold text-ink-50 tracking-tight">The five reports</h2>
+        <p class="mt-2 text-ink-300 max-w-2xl">
+          Synthesis first, then each lens reviewer, then the adversary. Every report was filed verbatim,
+          signed by the filing agent, and settled on-chain.
+        </p>
+      </div>
+
+      <div role="tablist" aria-label="Audit reports" class="flex flex-wrap gap-1 border-b border-ink-800 mb-8">
+        {sections.map((s, i) => (
+          <button
+            type="button"
+            role="tab"
+            data-tab-target={s.id}
+            aria-selected={i === 0 ? "true" : "false"}
+            class={`px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors ${
+              i === 0
+                ? "border-verdict-adversary text-ink-50"
+                : "border-transparent text-ink-300 hover:text-ink-100"
+            }`}
+          >
+            {s.tab}
+          </button>
+        ))}
+      </div>
+
+      {sections.map((s, i) => (
+        <article
+          data-tab-panel={s.id}
+          class={`prose-tribunal ${i === 0 ? "" : "hidden"}`}
+        >
+          <s.Content />
+        </article>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<script is:inline>
+  (() => {
+    const tabs = document.querySelectorAll("[data-tab-target]");
+    const panels = document.querySelectorAll("[data-tab-panel]");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.getAttribute("data-tab-target");
+        tabs.forEach((t) => {
+          const active = t === tab;
+          t.setAttribute("aria-selected", active ? "true" : "false");
+          t.classList.toggle("border-verdict-adversary", active);
+          t.classList.toggle("text-ink-50", active);
+          t.classList.toggle("border-transparent", !active);
+          t.classList.toggle("text-ink-300", !active);
+        });
+        panels.forEach((p) => {
+          p.classList.toggle("hidden", p.getAttribute("data-tab-panel") !== target);
+        });
+      });
+    });
+  })();
+</script>

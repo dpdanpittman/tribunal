@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 
-const docs = [
+const core = [
   {
     slug: "methodology",
     title: "The Tribunal Methodology",
@@ -23,37 +23,69 @@ const docs = [
     lede: "Per-host setup. Go CLI, skill tree, chain config bootstrap, wallet provisioning. From zero to filing a signed finding.",
   },
 ];
+
+const extensions = [
+  {
+    slug: "convergence",
+    title: "Convergence",
+    lede: "Single-pass review tells you what's wrong; a converging review tells you when you're done. Multi-round audit loops with rotated panel composition, stopping criteria, and the F-NEW-403 lesson that motivated this extension. (v0.4)",
+    badge: "v0.4",
+  },
+];
 ---
 <Base title="Methodology" description="Tribunal methodology: process backbone, lens-parallel review, adversarial gate, on-chain incentive layer.">
   <section class="border-b border-ink-800/80">
     <div class="max-w-4xl mx-auto px-6 pt-20 pb-12">
       <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">Methodology</p>
       <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
-        How Tribunal works, in four documents.
+        How Tribunal works.
       </h1>
       <p class="mt-6 text-lg text-ink-300 max-w-2xl leading-relaxed">
-        Start with the methodology. The other three are companions — read whichever one your role hits first.
+        Start with the methodology. The companion docs cover the math, the protocol, and setup. Methodology
+        extensions describe second-order properties Tribunal earns through composition.
       </p>
     </div>
   </section>
 
   <section>
-    <div class="max-w-4xl mx-auto px-6 py-16">
-      <ul class="space-y-4">
-        {docs.map((d) => (
-          <li>
-            <a href={`/docs/${d.slug}`} class="block rounded-xl border border-ink-700/60 bg-ink-900/40 p-6 hover:border-verdict-adversary/40 hover:bg-ink-900/60 transition-colors group">
-              <div class="flex items-baseline justify-between gap-4">
-                <h2 class="font-display text-xl font-semibold text-ink-50 group-hover:text-verdict-adversary transition-colors">
-                  {d.title}
-                </h2>
-                <span class="font-mono text-xs text-ink-400 group-hover:text-verdict-adversary transition-colors">/{d.slug}</span>
-              </div>
-              <p class="mt-2 text-ink-300 leading-relaxed">{d.lede}</p>
-            </a>
-          </li>
-        ))}
-      </ul>
+    <div class="max-w-4xl mx-auto px-6 py-16 space-y-12">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-ink-400 font-mono mb-4">Core</p>
+        <ul class="space-y-4">
+          {core.map((d) => (
+            <li>
+              <a href={`/docs/${d.slug}`} class="block rounded-xl border border-ink-700/60 bg-ink-900/40 p-6 hover:border-verdict-adversary/40 hover:bg-ink-900/60 transition-colors group">
+                <div class="flex items-baseline justify-between gap-4">
+                  <h2 class="font-display text-xl font-semibold text-ink-50 group-hover:text-verdict-adversary transition-colors">
+                    {d.title}
+                  </h2>
+                  <span class="font-mono text-xs text-ink-400 group-hover:text-verdict-adversary transition-colors">/{d.slug}</span>
+                </div>
+                <p class="mt-2 text-ink-300 leading-relaxed">{d.lede}</p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-ink-400 font-mono mb-4">Extensions</p>
+        <ul class="space-y-4">
+          {extensions.map((d) => (
+            <li>
+              <a href={`/docs/${d.slug}`} class="block rounded-xl border border-verdict-adversary/30 bg-verdict-adversary/5 p-6 hover:border-verdict-adversary/60 hover:bg-verdict-adversary/10 transition-colors group">
+                <div class="flex items-baseline justify-between gap-4">
+                  <h2 class="font-display text-xl font-semibold text-ink-50 group-hover:text-verdict-adversary transition-colors">
+                    {d.title}
+                  </h2>
+                  <span class="font-mono text-xs text-verdict-adversary px-2 py-0.5 rounded border border-verdict-adversary/40">{d.badge}</span>
+                </div>
+                <p class="mt-2 text-ink-300 leading-relaxed">{d.lede}</p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   </section>
 </Base>
