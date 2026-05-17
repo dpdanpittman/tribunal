@@ -17,13 +17,16 @@ import (
 
 func newReviewCmd() *cobra.Command {
 	var (
-		planID         string
-		panelName      string
-		bucket         string
-		diffSpec       string
-		adversaryMD    string
-		noLedger       bool
-		noAutoRegister bool
+		planID          string
+		panelName       string
+		bucket          string
+		diffSpec        string
+		adversaryMD     string
+		noLedger        bool
+		noAutoRegister  bool
+		viaClawpatch    bool
+		clawpatchModel  string
+		clawpatchSkipMap bool
 	)
 	cmd := &cobra.Command{
 		Use:   "review",
@@ -53,17 +56,43 @@ registered on first use unless --no-auto-register).`,
 			if err != nil {
 				return err
 			}
-			in, err := review.FindInputs(cwd, planID, diffSpec)
-			if err != nil {
-				return err
-			}
 			reg := buildRegistry()
 			agentReg, err := defaultRegistry()
 			if err != nil {
 				return err
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+			// 20m timeout covers the adversary panel. Clawpatch reviews can
+			// take longer on bigger repos; if --via-clawpatch is set, give
+			// the whole command a more generous budget.
+			cmdTimeout := 20 * time.Minute
+			if viaClawpatch {
+				cmdTimeout = 45 * time.Minute
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
 			defer cancel()
+			// If --via-clawpatch was passed, drive the lens stage through
+			// clawpatch FIRST so the per-lens reports land on disk before
+			// review.FindInputs reads them.
+			if viaClawpatch {
+				lensRun, err := review.RunClawpatchLens(ctx, review.ClawpatchLensOptions{
+					ProjectRoot:   cwd,
+					PlanID:        planID,
+					Round:         1,
+					WriteToLedger: !noLedger,
+					AutoRegister:  !noAutoRegister,
+					Provider:      "acpx",
+					Model:         clawpatchModel,
+					SkipMap:       clawpatchSkipMap,
+				}, agentReg)
+				if err != nil {
+					return fmt.Errorf("clawpatch lens stage: %w", err)
+				}
+				printClawpatchLensRun(lensRun)
+			}
+			in, err := review.FindInputs(cwd, planID, diffSpec)
+			if err != nil {
+				return err
+			}
 			result, err := review.Run(ctx, review.Options{
 				ProjectRoot:   cwd,
 				PlanID:        planID,
@@ -93,7 +122,44 @@ registered on first use unless --no-auto-register).`,
 	cmd.Flags().StringVar(&adversaryMD, "adversary-md", "", "Path to tribunal-adversary.md (defaults to installed agents/ dir or this repo's agents/)")
 	cmd.Flags().BoolVar(&noLedger, "no-ledger", false, "Do not sign + append findings to the ledger")
 	cmd.Flags().BoolVar(&noAutoRegister, "no-auto-register", false, "Refuse to auto-create adversary agent keypairs")
+	cmd.Flags().BoolVar(&viaClawpatch, "via-clawpatch", false, "Run the lens stage via clawpatch subprocess instead of expecting skill-trio reports on disk")
+	cmd.Flags().StringVar(&clawpatchModel, "clawpatch-model", "", "Model passed to clawpatch (--model). Default: clawpatch's provider default.")
+	cmd.Flags().BoolVar(&clawpatchSkipMap, "clawpatch-skip-map", false, "Skip clawpatch map step (use the existing feature graph). Debugging escape hatch.")
 	return cmd
+}
+
+func printClawpatchLensRun(r *review.ClawpatchLensRun) {
+	fmt.Println("Clawpatch lens stage")
+	fmt.Printf("  Plan:           %s\n", r.PlanID)
+	if r.MapResult != nil {
+		fmt.Printf("  Map:            %d features (source=%s, new=%d, changed=%d, stale=%d)\n",
+			r.MapResult.Features, r.MapResult.Source, r.MapResult.New, r.MapResult.Changed, r.MapResult.Stale)
+	}
+	if r.ReviewResult != nil {
+		fmt.Printf("  Review:         run=%s reviewed=%d findings=%d jobs=%d\n",
+			r.ReviewResult.Run, r.ReviewResult.Reviewed, r.ReviewResult.Findings, r.ReviewResult.Jobs)
+	}
+	for _, lens := range []string{"arch", "sec", "perf"} {
+		count := 0
+		for k, v := range r.FindingsByLens {
+			if string(k) == lens {
+				count = len(v)
+				break
+			}
+		}
+		fmt.Printf("  %-4s findings:  %d\n", lens, count)
+	}
+	if len(r.LedgerFindings) > 0 {
+		fmt.Printf("  Ledger entries appended: %d\n", len(r.LedgerFindings))
+	}
+	if len(r.Skipped) > 0 {
+		fmt.Printf("  Skipped (%d):\n", len(r.Skipped))
+		for _, s := range r.Skipped {
+			fmt.Printf("    - %s\n", s)
+		}
+	}
+	fmt.Printf("  Duration:       %s\n", r.Duration.Truncate(time.Millisecond))
+	fmt.Println()
 }
 
 // loadAdversaryBody reads agents/tribunal-adversary.md from the user's

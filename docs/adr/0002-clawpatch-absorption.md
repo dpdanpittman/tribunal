@@ -1,6 +1,6 @@
 # ADR-0002: Clawpatch Absorption
 
-**Status:** Sketch — pick up 2026-05-18
+**Status:** Phase 1 implemented (2026-05-17). Three decisions locked; spike merged.
 **Date:** 2026-05-17 (late evening, post-PII-audit session)
 **Driver:** Decision on whether/how Tribunal should subsume `openclaw/clawpatch` capabilities now that v0.2.0 ships the `acpx` provider (Claude via ACP).
 
@@ -133,9 +133,12 @@ Both are small enough to PR upstream; neither blocks Option C.
      Lower trust signal than the agent itself signing, but no upstream change.
    - Option: pass the agent's keypair through to clawpatch via env, have
      clawpatch sign before emitting. Requires clawpatch changes.
-   - **Tentative recommendation:** Tribunal signs on ingest. The clawpatch
-     finding ID is part of the signed payload so re-running clawpatch
-     reproducibly verifies the same finding was produced.
+   - **DECIDED (2026-05-17):** Tribunal-the-orchestrator signs every
+     clawpatch-sourced finding on ingest. No upstream change needed in
+     Phase 1. The clawpatch finding ID is folded into the Tribunal
+     `claim_hash` (sha256("clawpatch:" + cp.FindingID)), so re-running
+     clawpatch reproducibly maps to the same Tribunal claim hash and the
+     ledger dedupes idempotently.
 
 2. **Mapping cadence** — clawpatch's `map` is heavy. Re-running per lens is
    wasteful. Tribunal should `clawpatch map --json` **once**, then
@@ -196,9 +199,50 @@ direct-Anthropic path retired.
 **Phase 4 (v0.7+, optional):** re-evaluate Option A based on mapper portfolio
 stability and language coverage gaps.
 
-## Status
+## Phase 1 — implemented 2026-05-17
 
-Sketch. Pick up 2026-05-18 to:
+The spike landed in this repo:
+
+| File                                   | Purpose                                                                                                                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `internal/clawpatch/types.go`          | Go mirrors of clawpatch's `Finding`, `Evidence`, `MapResult`, `ReviewResult` (matches `/home/dan/src/clawpatch/src/types.ts:221+`) |
+| `internal/clawpatch/runner.go`         | Subprocess wrapper. `Doctor`, `Map`, `Review`, `ListFindings`                                                                      |
+| `internal/clawpatch/translate.go`      | `LensBucket`, `SeverityMap`, `CategoryMap`, `ToTribunalFinding`, `FormatLensReport`                                                |
+| `internal/clawpatch/translate_test.go` | Unit tests (lens bucketing, severity map, finding shape + signature verify)                                                        |
+| `internal/review/clawpatch.go`         | `RunClawpatchLens` orchestrator: doctor → map → review → bucket → sign → emit per-lens reports                                     |
+| `cmd/tribunal/review.go`               | `--via-clawpatch` opt-in flag (+ `--clawpatch-model`, `--clawpatch-skip-map` knobs)                                                |
+
+End-to-end flow with `tribunal review --plan P-test --via-clawpatch`:
+
+1. `clawpatch doctor` preflight
+2. `clawpatch map --json` once
+3. `clawpatch review --json` once (single pass; lens-specific prompts deferred to Phase 2)
+4. Read `.clawpatch/findings/*.json`
+5. For each finding: bucket by category → `clawpatch.LensBucket` → resolve `clawpatch-<lens>` agent (auto-register with the matching `reviewer-{arch,sec,perf}` role) → translate to `ledger.Finding` → sign → `AppendFinding`
+6. Emit `.tribunal/reports/<plan>/<plan>-<lens>-clawpatch.md` for each lens (adversary stage reads these as-is)
+7. Existing adversary stage continues unchanged
+
+## Decisions locked
+
+The three open questions at the top of the ADR were resolved in conversation 2026-05-17:
+
+1. **Signing identity:** Tribunal-the-orchestrator signs on ingest.
+2. **Mapping cadence:** Map once, review N times. (Phase 1 reviews once with category-bucketing; Phase 2 will run three lens-aware reviews after the upstream PR for custom prompts lands.)
+3. **Verify pyramid:** Clawpatch detects (project type, run commands), Tribunal's `internal/verify` executes.
+
+## Next (Phase 2 backlog)
+
+1. Triage state machine extension to ledger (`triage_status`, `triage_history`, `clawpatch_id`).
+2. `tribunal fix --finding <id>` wrapping `clawpatch fix`.
+3. `tribunal revalidate` wrapping `clawpatch revalidate`.
+4. Upstream PRs to clawpatch:
+   - `--prompt-file` / stdin prompt support (so Tribunal can drive three lens-aware reviews)
+   - `--export-tribunal-ledger <path>` (skip the disk round-trip on ingest)
+5. Tighten `validate_id_field` in the CosmWasm contract to a printable-ASCII allowlist (defense-in-depth on the tribunal-site XSS fix shipped 2026-05-17 site/leaderboard.astro).
+
+## Original status (preserved for history)
+
+Sketch — pick up 2026-05-18 to:
 
 1. Validate Option C is the right framing or whether B is sufficient long-term.
 2. Decide identity question (#1 above).
@@ -210,11 +254,11 @@ Sketch. Pick up 2026-05-18 to:
 
 This was sketched at the tail end of an audit-fix session (Tribunal output
 applied to the oracle stack, ~12 hours of work, dashboard v0.7.3 → v0.7.10,
-PII scrubbed from argus-iris history, GH_TOKEN rotated). The audit produced
+PII scrubbed from argus-iris history, GH*TOKEN rotated). The audit produced
 99 findings across the three repos; Tribunal's lens-parallel methodology
 caught most exploitable items, the adversary stage found the chains, and
 synthesis ordered the fix sequence correctly. Clawpatch was first considered
-as the _fix loop_ on top of those findings, but quickly turned into a
+as the \_fix loop* on top of those findings, but quickly turned into a
 question of whether Tribunal should own the discovery layer too.
 
 The merger isn't "Tribunal swallows clawpatch wholesale." It's "Tribunal
