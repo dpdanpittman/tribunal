@@ -18,23 +18,23 @@ package clawpatch
 // Severity uses clawpatch's 4-tier scale (critical/high/medium/low); the
 // translator in translate.go maps that to Tribunal's 3-tier ledger.Severity.
 type Finding struct {
-	SchemaVersion          int        `json:"schemaVersion"`
-	FindingID              string     `json:"findingId"`
-	FeatureID              string     `json:"featureId"`
-	Title                  string     `json:"title"`
-	Category               string     `json:"category"` // bug|security|performance|concurrency|api-contract|data-loss|test-gap|docs-gap|build-release|maintainability
-	Severity               string     `json:"severity"` // critical|high|medium|low
-	Confidence             string     `json:"confidence"`
-	Triage                 string     `json:"triage,omitempty"`
-	Evidence               []Evidence `json:"evidence"`
-	Reasoning              string     `json:"reasoning"`
-	Reproduction           *string    `json:"reproduction"`
-	Recommendation         string     `json:"recommendation"`
-	WhyTestsMiss           string     `json:"whyTestsDoNotAlreadyCoverThis,omitempty"`
-	SuggestedRegressionTest *string   `json:"suggestedRegressionTest,omitempty"`
-	MinimumFixScope        string     `json:"minimumFixScope,omitempty"`
-	Status                 string     `json:"status"` // open|false-positive|fixed|wont-fix|uncertain
-	History                []History  `json:"history,omitempty"`
+	SchemaVersion           int        `json:"schemaVersion"`
+	FindingID               string     `json:"findingId"`
+	FeatureID               string     `json:"featureId"`
+	Title                   string     `json:"title"`
+	Category                string     `json:"category"` // bug|security|performance|concurrency|api-contract|data-loss|test-gap|docs-gap|build-release|maintainability
+	Severity                string     `json:"severity"` // critical|high|medium|low
+	Confidence              string     `json:"confidence"`
+	Triage                  string     `json:"triage,omitempty"`
+	Evidence                []Evidence `json:"evidence"`
+	Reasoning               string     `json:"reasoning"`
+	Reproduction            *string    `json:"reproduction"`
+	Recommendation          string     `json:"recommendation"`
+	WhyTestsMiss            string     `json:"whyTestsDoNotAlreadyCoverThis,omitempty"`
+	SuggestedRegressionTest *string    `json:"suggestedRegressionTest,omitempty"`
+	MinimumFixScope         string     `json:"minimumFixScope,omitempty"`
+	Status                  string     `json:"status"` // open|false-positive|fixed|wont-fix|uncertain
+	History                 []History  `json:"history,omitempty"`
 	// Signature is clawpatch's stable hash for finding-deduplication. Not
 	// a cryptographic signature — Tribunal computes its own ed25519
 	// signature over a different canonical payload at ingest time.

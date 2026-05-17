@@ -17,15 +17,15 @@ import (
 
 func newReviewCmd() *cobra.Command {
 	var (
-		planID          string
-		panelName       string
-		bucket          string
-		diffSpec        string
-		adversaryMD     string
-		noLedger        bool
-		noAutoRegister  bool
-		viaClawpatch    bool
-		clawpatchModel  string
+		planID           string
+		panelName        string
+		bucket           string
+		diffSpec         string
+		adversaryMD      string
+		noLedger         bool
+		noAutoRegister   bool
+		viaClawpatch     bool
+		clawpatchModel   string
 		clawpatchSkipMap bool
 	)
 	cmd := &cobra.Command{

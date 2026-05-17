@@ -18,15 +18,15 @@ import (
 // ClawpatchLensRun summarises the lens stage of a clawpatch-driven review.
 // Shape mirrors AdversaryRun so a caller can reuse formatting code.
 type ClawpatchLensRun struct {
-	PlanID         string                          `json:"plan_id"`
-	Round          int                             `json:"round"`
+	PlanID         string                                 `json:"plan_id"`
+	Round          int                                    `json:"round"`
 	FindingsByLens map[clawpatch.Lens][]clawpatch.Finding `json:"-"`
-	WrittenReports []string                        `json:"written_reports"`
-	LedgerFindings []*ledger.Finding               `json:"ledger_findings,omitempty"`
-	Skipped        []string                        `json:"skipped_findings,omitempty"`
-	MapResult      *clawpatch.MapResult            `json:"map_result,omitempty"`
-	ReviewResult   *clawpatch.ReviewResult         `json:"review_result,omitempty"`
-	Duration       time.Duration                   `json:"duration"`
+	WrittenReports []string                               `json:"written_reports"`
+	LedgerFindings []*ledger.Finding                      `json:"ledger_findings,omitempty"`
+	Skipped        []string                               `json:"skipped_findings,omitempty"`
+	MapResult      *clawpatch.MapResult                   `json:"map_result,omitempty"`
+	ReviewResult   *clawpatch.ReviewResult                `json:"review_result,omitempty"`
+	Duration       time.Duration                          `json:"duration"`
 }
 
 // ClawpatchLensOptions shape RunClawpatchLens. Same defaults as the
