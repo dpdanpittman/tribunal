@@ -74,26 +74,45 @@ const chainID = "xion-testnet-2";
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`http ${res.status}`);
       const body = await res.json();
-      const entries = body?.data?.entries ?? [];
+      // Cap defensively in case the LCD ever returns more than the contract's
+      // requested limit. Per-field length clamping happens in `cell()` below.
+      const entries = (body?.data?.entries ?? []).slice(0, 50);
+
+      // Clear existing rows safely.
+      while (rows.firstChild) rows.removeChild(rows.firstChild);
+
+      const cell = (text, classes) => {
+        const td = document.createElement("td");
+        td.className = classes;
+        // textContent is the XSS guard: on-chain `label` / `balance` are
+        // attacker-controllable, and `register_agent` is currently
+        // permissionless on testnet. Never interpolate them as HTML.
+        td.textContent = String(text ?? "").slice(0, 128);
+        return td;
+      };
+
       if (entries.length === 0) {
-        rows.innerHTML = `<tr><td colspan="6" class="px-5 py-8 text-center text-ink-400 font-mono text-sm">No agents registered yet.</td></tr>`;
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        td.className = "px-5 py-8 text-center text-ink-400 font-mono text-sm";
+        td.textContent = "No agents registered yet.";
+        tr.appendChild(td);
+        rows.appendChild(tr);
       } else {
-        rows.innerHTML = entries
-          .map((e, i) => {
-            const tp = Number(e.tp_count) || 0;
-            const fp = Number(e.fp_count) || 0;
-            return `
-              <tr class="border-b border-ink-800 last:border-0">
-                <td class="px-5 py-3 text-ink-300 font-mono">${i + 1}</td>
-                <td class="px-5 py-3 font-medium text-ink-50">${e.label}</td>
-                <td class="px-5 py-3 text-ink-300 font-mono text-xs">${fmtRole(e.role)}</td>
-                <td class="px-5 py-3 text-right text-ink-100 font-mono">${e.balance}</td>
-                <td class="px-5 py-3 text-right ${tp > 0 ? "text-verdict-approve" : "text-ink-400"} font-mono">${tp}</td>
-                <td class="px-5 py-3 text-right ${fp > 0 ? "text-verdict-critical" : "text-ink-400"} font-mono">${fp}</td>
-              </tr>
-            `;
-          })
-          .join("");
+        for (const [i, e] of entries.entries()) {
+          const tp = Number(e.tp_count) || 0;
+          const fp = Number(e.fp_count) || 0;
+          const tr = document.createElement("tr");
+          tr.className = "border-b border-ink-800 last:border-0";
+          tr.appendChild(cell(i + 1, "px-5 py-3 text-ink-300 font-mono"));
+          tr.appendChild(cell(e.label, "px-5 py-3 font-medium text-ink-50"));
+          tr.appendChild(cell(fmtRole(e.role), "px-5 py-3 text-ink-300 font-mono text-xs"));
+          tr.appendChild(cell(e.balance, "px-5 py-3 text-right text-ink-100 font-mono"));
+          tr.appendChild(cell(tp, `px-5 py-3 text-right ${tp > 0 ? "text-verdict-approve" : "text-ink-400"} font-mono`));
+          tr.appendChild(cell(fp, `px-5 py-3 text-right ${fp > 0 ? "text-verdict-critical" : "text-ink-400"} font-mono`));
+          rows.appendChild(tr);
+        }
       }
       status.textContent = `${entries.length} agents · live from xion-testnet-2`;
       status.classList.remove("text-verdict-critical");
