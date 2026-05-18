@@ -21,10 +21,13 @@ pub const MAX_LABEL_LEN: usize = 64;
 pub const MAX_MODEL_ID_LEN: usize = 128;
 pub const MAX_REASON_LEN: usize = 256;
 
-/// Reject identifiers that contain bytes the canonical signing format
-/// can't safely round-trip: the pipe separator and any ASCII control
-/// character (including NUL, newline, tab). Empty strings are rejected
-/// for storage-key fields; allowed where explicitly noted.
+/// Reject identifiers that contain bytes outside printable ASCII
+/// (U+0020..=U+007E). This subsumes the original "no pipe / no control
+/// character" check and additionally rejects every multibyte UTF-8
+/// sequence — closing the on-chain leg of the XSS surface that any
+/// future leaderboard frontend would otherwise have to police on its
+/// own (e.g. `<img src=x>` as an agent label). Empty strings are
+/// rejected for storage-key fields; allowed where explicitly noted.
 pub fn validate_id_field(field: &str, value: &str, max_len: usize) -> Result<(), ContractError> {
     if value.is_empty() {
         return Err(ContractError::InvalidIdentifier {
@@ -45,10 +48,11 @@ pub fn validate_id_field(field: &str, value: &str, max_len: usize) -> Result<(),
                 reason: format!("contains pipe character at index {}", i),
             });
         }
-        if c.is_control() {
+        let cp = c as u32;
+        if !(0x20..=0x7E).contains(&cp) {
             return Err(ContractError::InvalidIdentifier {
                 field: field.to_string(),
-                reason: format!("contains control character at index {}", i),
+                reason: format!("contains non-printable-ASCII character at index {}", i),
             });
         }
     }

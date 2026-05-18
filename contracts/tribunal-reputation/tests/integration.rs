@@ -195,6 +195,101 @@ fn register_agent_rejects_invalid_role() {
 }
 
 #[test]
+fn register_agent_rejects_non_ascii_label() {
+    let (mut app, contract) = setup();
+    let kp = Keypair::from_seed(0x06);
+    // Latin-1 supplement chars are multibyte UTF-8 — must be rejected.
+    let msg = ExecuteMsg::RegisterAgent {
+        pubkey: kp.pubkey,
+        label: "agent-café".into(),
+        model_id: "m".into(),
+        role: "adversary".into(),
+        initial_balance: None,
+    };
+    let err = app
+        .execute_contract(Addr::unchecked(ADMIN), contract, &msg, &[])
+        .unwrap_err();
+    let msg = err.root_cause().to_string();
+    assert!(
+        msg.to_lowercase().contains("non-printable-ascii"),
+        "got: {}",
+        msg
+    );
+}
+
+#[test]
+fn register_agent_rejects_html_injection_label() {
+    let (mut app, contract) = setup();
+    let kp = Keypair::from_seed(0x07);
+    // All bytes are printable ASCII; the test belongs here only as a
+    // documentation-of-intent that the validator does NOT reject this
+    // shape — the contract is not in the business of HTML-escaping, but
+    // downstream frontends are. Keep the label printable so the surface
+    // is documented as "Tribunal allows it; frontends must escape it".
+    let msg = ExecuteMsg::RegisterAgent {
+        pubkey: kp.pubkey.clone(),
+        label: "<img src=x>".into(),
+        model_id: "m".into(),
+        role: "adversary".into(),
+        initial_balance: None,
+    };
+    app.execute_contract(Addr::unchecked(ADMIN), contract.clone(), &msg, &[])
+        .expect("printable-ASCII labels — including HTML-like bytes — must be accepted");
+    let resp: AgentResp = app
+        .wrap()
+        .query_wasm_smart(&contract, &QueryMsg::Agent { pubkey: kp.pubkey })
+        .unwrap();
+    assert_eq!(resp.agent.label, "<img src=x>");
+}
+
+#[test]
+fn register_agent_rejects_non_printable_label() {
+    let (mut app, contract) = setup();
+    let kp = Keypair::from_seed(0x08);
+    // U+007F DELETE is a control character outside 0x20..=0x7E.
+    let msg = ExecuteMsg::RegisterAgent {
+        pubkey: kp.pubkey,
+        label: "agent\u{007F}name".into(),
+        model_id: "m".into(),
+        role: "adversary".into(),
+        initial_balance: None,
+    };
+    let err = app
+        .execute_contract(Addr::unchecked(ADMIN), contract, &msg, &[])
+        .unwrap_err();
+    let msg = err.root_cause().to_string();
+    assert!(
+        msg.to_lowercase().contains("non-printable-ascii"),
+        "got: {}",
+        msg
+    );
+}
+
+#[test]
+fn rotate_agent_rejects_non_ascii_new_label() {
+    let (mut app, contract) = setup();
+    let kp = register(&mut app, &contract, "v1", "adversary", 0x09);
+    let new_kp = Keypair::from_seed(0x0A);
+    let msg = ExecuteMsg::RotateAgent {
+        old_pubkey: kp.pubkey,
+        new_pubkey: new_kp.pubkey,
+        // Emoji is multibyte UTF-8 — must be rejected.
+        new_label: "v2-✨".into(),
+        new_model_id: "m2".into(),
+        reason: "model upgrade".into(),
+    };
+    let err = app
+        .execute_contract(Addr::unchecked(ADMIN), contract, &msg, &[])
+        .unwrap_err();
+    let msg = err.root_cause().to_string();
+    assert!(
+        msg.to_lowercase().contains("non-printable-ascii"),
+        "got: {}",
+        msg
+    );
+}
+
+#[test]
 fn commit_finding_happy_path_deducts_stake() {
     let (mut app, contract) = setup();
     let kp = register(&mut app, &contract, "adv", "adversary", 0x10);
