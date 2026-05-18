@@ -16,6 +16,10 @@ import (
 // implementation correctly classifies hostile / borderline chain ids.
 // v0.3.3 used `strings.Contains(id, "test")` which false-positived on
 // names like `xion-mainnet-test-fork` (P-v033-audit F-SEC-303).
+//
+// v0.3.5 adds the F-OPUS-004 cases — non-ASCII chain ids must be refused
+// outright so Unicode confusables can't classify a mainnet-looking id
+// as test.
 func TestLooksLikeTestChain_TokenAware(t *testing.T) {
 	tests := []struct {
 		chainID string
@@ -33,12 +37,18 @@ func TestLooksLikeTestChain_TokenAware(t *testing.T) {
 		{"some-untested-network", false, "substring 'test' inside 'untested' does not match"},
 		{"production", false, "production marker"},
 		{"", false, "empty"},
+		// F-OPUS-004 — Unicode confusables must NOT classify as test.
+		{"MAİNNET-test-fork", false, "Turkish dotted I (U+0130) bypass attempt"},
+		{"xion-tëst-1", false, "non-ASCII anywhere in id rejects"},
+		{"xion­testnet-1", false, "soft hyphen U+00AD bypass attempt"},
+		{"chain\tid", false, "control character (tab) rejected"},
+		{"chain\x7Fid", false, "DEL (U+007F) is non-printable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.chainID, func(t *testing.T) {
-			got := looksLikeTestChain(tt.chainID)
+			got := LooksLikeTestChain(tt.chainID)
 			if got != tt.want {
-				t.Fatalf("looksLikeTestChain(%q) = %v, want %v (%s)", tt.chainID, got, tt.want, tt.reason)
+				t.Fatalf("LooksLikeTestChain(%q) = %v, want %v (%s)", tt.chainID, got, tt.want, tt.reason)
 			}
 		})
 	}

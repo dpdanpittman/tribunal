@@ -14,7 +14,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/dpdanpittman/tribunal/internal/agent"
@@ -97,8 +96,8 @@ func main() {
 		log.Fatalf("load chain config: %v", err)
 	}
 
-	if !looksLikeTestChain(cfg.ChainID) && !allowProd {
-		log.Fatalf("tribunal-seed refusing to --send against chain_id=%q (looks like production). Pass --allow-prod to override, or point ~/.tribunal/chain.yaml at a devnet/testnet first.", cfg.ChainID)
+	if !chain.LooksLikeTestChain(cfg.ChainID) && !allowProd {
+		log.Fatalf("tribunal-seed refusing to --send against chain_id=%q (looks like production, or contains non-ASCII bytes). Pass --allow-prod to override, or point ~/.tribunal/chain.yaml at a devnet/testnet first.", cfg.ChainID)
 	}
 
 	cli := chain.New(cfg)
@@ -119,27 +118,6 @@ func main() {
 	fmt.Printf("resolve_finding_batch tx: %s\n", res.TxHash)
 }
 
-// looksLikeTestChain mirrors the same heuristic the chain.Client warning
-// uses. Mainnet-like chain ids are refused unless --allow-prod is set.
-//
-// v0.3.4: token-aware. Substring matching false-positived on hostile or
-// borderline names like `xion-mainnet-test-fork` (P-v033-audit F-SEC-303).
-// Explicit `mainnet`/`main`/`prod`/`production` tokens always win; only
-// then do we check for test-marker tokens as discrete dash-separated parts.
-func looksLikeTestChain(chainID string) bool {
-	id := strings.ToLower(chainID)
-	parts := strings.Split(id, "-")
-	for _, p := range parts {
-		switch p {
-		case "mainnet", "main", "prod", "production":
-			return false
-		}
-	}
-	for _, p := range parts {
-		switch p {
-		case "devnet", "testnet", "test", "dev", "local":
-			return true
-		}
-	}
-	return false
-}
+// v0.3.5: looksLikeTestChain was duplicated here and in internal/chain.
+// F-OPUS-004 surfaced that the duplicate had to be fixed twice to close
+// the Unicode bypass; consolidated to chain.LooksLikeTestChain.

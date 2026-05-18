@@ -36,7 +36,7 @@ type Client struct {
 // a non-test-looking `chain_id` — `test` stores keys in plaintext and
 // should never be used against a production chain.
 func New(cfg *Config) *Client {
-	if cfg.KeyringBackend == "test" && !looksLikeTestChain(cfg.ChainID) {
+	if cfg.KeyringBackend == "test" && !LooksLikeTestChain(cfg.ChainID) {
 		fmt.Fprintf(os.Stderr,
 			"tribunal: WARNING — keyring_backend=test against chain_id=%q. The test backend stores signing keys in plaintext; use keyring_backend=os for any non-dev environment.\n",
 			cfg.ChainID)
@@ -49,17 +49,35 @@ func New(cfg *Config) *Client {
 	}
 }
 
-// looksLikeTestChain reports whether the chain id looks like a dev /
-// test environment. Used to decide whether to emit the keyring warning.
+// LooksLikeTestChain reports whether the chain id looks like a dev /
+// test environment. Used to decide whether to emit the keyring warning
+// here and whether `tribunal-seed --send` requires `--allow-prod`.
 //
 // v0.3.4 — token-aware instead of substring. v0.3.3's substring check
 // false-positived on hostile/borderline chain ids like
-// `xion-mainnet-test-fork` (P-v033-audit F-SEC-303). The new behavior:
+// `xion-mainnet-test-fork` (P-v033-audit F-SEC-303). Behavior:
 //   - Explicit `mainnet` / `main` / `prod` / `production` markers ALWAYS
 //     win (return false), regardless of whether other markers also match.
 //   - Otherwise, look for `devnet` / `testnet` / `test` / `dev` / `local`
 //     as discrete dash-separated tokens, not substrings.
-func looksLikeTestChain(chainID string) bool {
+//
+// v0.3.5 — printable-ASCII guard against Unicode confusables (F-OPUS-004,
+// P-v035-followup). Chain ids containing any rune outside U+0020..=U+007E
+// are refused outright (return false → "not a test chain, require
+// --allow-prod"). Without this guard, `MAİNNET-test-fork` (Turkish dotted
+// I, U+0130) lowercases to `mai̇nnet-test-fork` (U+0307 combining dot
+// above), which fails the literal `mainnet` token check but still trips
+// the `test` token, classifying a human-readable-mainnet id as test.
+// Cosmos chain-ids are ASCII by convention; rejecting non-ASCII costs
+// nothing for legitimate chains and closes the bypass for hostile ones.
+//
+// Consolidates the previously-duplicated copy from cmd/tribunal-seed.
+func LooksLikeTestChain(chainID string) bool {
+	for _, r := range chainID {
+		if r < 0x20 || r > 0x7E {
+			return false
+		}
+	}
 	id := strings.ToLower(chainID)
 	parts := strings.Split(id, "-")
 	for _, p := range parts {
