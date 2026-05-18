@@ -14,6 +14,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.1] — 2026-05-17
+
+The convergence-controller release. Single-pass review tells you what's wrong right now; a converging review tells you when you're done. v0.4.1 ships milestone M1 of [ADR-0001](./docs/adr/0001-convergence-controller.md) — the output-only loop. The implementer interface (M2) and auto-apply (M3) follow in later releases.
+
+### Added
+
+- **`tribunal converge`** — release-gating loop that drives the single-pass adversary stage repeatedly with rotated panel composition until a stopping criterion fires or the budget exhausts. Each round writes a `round-NNNN.json` to `.tribunal/convergence/<plan-id>/`; subsequent invocations load history from disk so rotation stays informed across operator-fix gaps.
+- **`internal/converge/` package** — the controller, panel rotators, stopping criteria, and round ledger.
+  - `Controller.Run` orchestrates the loop; takes an injectable `AdversaryStage` so the loop is testable without LLM calls.
+  - `PanelRotator` interface with two M1 implementations: `FocusShuffleRotator` (permutes member focus per round; works in single-provider environments) and `CompositeRotator` (the v0.4.1 default — composite of focus + model_tier axes).
+  - `StoppingCriterion` interface with three M1 implementations: `ConsecutiveCleanCriterion(N)` (N back-to-back clean rounds), `NoNovelFindingsCriterion` (every finding in the round is a carry-forward by claim_hash), `MaxRoundsCriterion(N)` (escape valve).
+  - `BudgetTracker` caps total rounds / tokens / wallclock with graceful exhaustion (each axis produces a distinct reason).
+  - Per-round persistence at `.tribunal/convergence/<plan-id>/round-NNNN.json` with zero-padded names for stable lexical ordering.
+- **CLI flags**: `--plan`, `--diff`, `--max-rounds`, `--max-tokens`, `--max-wallclock`, `--severity-floor`, `--rotation`, `--stop-on`, plus the standard `--adversary-md` / `--bucket` / `--no-ledger` / `--no-auto-register` flags inherited from `tribunal review`.
+- **`review.Options.PanelOverride`** — non-empty value replaces the panel selected by `PanelName` for one invocation. Lets the convergence controller drive per-round rotated panels without mutating `tribunal.yaml`. Internal API; no behavior change for `tribunal review` callers.
+
+### Semantics
+
+- M1 is output-only: when a round produces unresolved Critical or Warning findings, the loop exits with status `needs_fixes`. The operator applies fixes manually and re-invokes. Subsequent invocations resume — round numbering, rotation, and stopping criteria all see the full history from disk.
+- Stopping criteria AND together. The CLI also wires `MaxRoundsCriterion` from `--max-rounds` regardless of `--stop-on` so a misconfigured loop can't run forever.
+- Findings are classified `carry_forward` against the historical claim_hash set on save; `NoNovelFindingsCriterion` uses that classification to declare convergence.
+
+### Tests
+
+- `TestController_StopsOnConsecutiveClean` — happy path; two clean rounds fire `consecutive-clean(2)`.
+- `TestController_PausesOnFindings` — a round with a Critical finding exits with `needs_fixes`.
+- `TestController_RotatesAcrossRounds` — the panel composition genuinely changes between rounds via `FocusShuffleRotator`.
+- `TestController_LoadsHistoryAcrossInvocations` — a second `Controller.Run` picks up where the first left off via the on-disk ledger.
+- `TestController_BudgetExhaustion` — `--max-rounds=1` halts before convergence.
+- `TestController_NoNovelFindingsFires` — round 2 with all-carry-forward findings converges via the no-novel criterion.
+- `TestParseStoppingCriteria` — `--stop-on` parser; valid cases + error cases.
+- `TestSelectRotator` — `--rotation` parser; defaults + unknown-name error + composite axis validation.
+- `TestLedgerRoundtrip` — `SaveRound` + `LoadHistory` are inverses; filename uses the zero-padded scheme.
+
+### Exit codes
+
+- `0` — converged
+- `2` — fatal error
+- `5` — needs_fixes (operator action expected before next invocation)
+- `6` — budget exhausted
+
+### Docs
+
+- `docs/adr/0001-convergence-controller.md` — promoted from Proposed to Implemented (M1). The M2 / M3 milestone sections remain as the v0.4.2 / later roadmap.
+
+### What v0.4.1 does NOT ship
+
+- **Implementer interface (M2)** — pluggable agent that authors fixes between rounds. Deferred to v0.4.2.
+- **Auto-apply mode (M3)** — the end-to-end loop without operator intervention. Deferred to v0.5+.
+- **Property-based testing scaffolding** — promoted out of v0.4.0 but still on the roadmap; targeting v0.4.3.
+
 ## [0.4.0] — 2026-05-17
 
 The intra-Claude diversity release. The first Tribunal version whose adversary-panel composition is grounded in empirical multi-adversary measurement, not theoretical vendor diversity.

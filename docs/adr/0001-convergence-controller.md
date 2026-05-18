@@ -1,7 +1,7 @@
 # ADR-0001: Convergence Controller
 
-**Status:** Proposed (v0.4 scope)
-**Date:** 2026-05-13
+**Status:** Implemented — M1 in v0.4.1 (2026-05-17); M2 / M3 still scheduled.
+**Date:** 2026-05-13 (proposed) → 2026-05-17 (M1 shipped)
 **Driver:** P-v033-audit, F-NEW-403 — observed three audit cycles producing structurally-similar defects without converging.
 
 ## Context
@@ -63,7 +63,7 @@ type Implementer interface {
 
 ### Milestones
 
-**M1 — output-only loop (v0.4.0)**
+**M1 — output-only loop (shipped v0.4.1 at 2026-05-17)**
 
 The controller runs the trio + adversary per round, records the round's findings, evaluates stopping criteria, emits a `ConvergenceResult` summary. **It does not author fixes.** Between rounds, the operator applies the implementer's role manually and re-runs `tribunal converge` (which picks up where it left off via the on-chain history).
 

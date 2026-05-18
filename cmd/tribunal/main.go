@@ -38,6 +38,7 @@ func newRootCmd() *cobra.Command {
 		newChainCmd(),
 		newFixCmd(),
 		newRevalidateCmd(),
+		newConvergeCmd(),
 	)
 	return cmd
 }

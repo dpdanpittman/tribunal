@@ -140,6 +140,13 @@ type Options struct {
 	AdversaryBody string // verbatim agent prompt body
 	WriteToLedger bool   // append signed findings; default true
 	AutoRegister  bool   // auto-create missing adversary agent keys; default true
+
+	// PanelOverride, when non-empty, replaces the panel selected by
+	// PanelName for this invocation. Used by the convergence controller
+	// (v0.4.1+) to drive per-round rotated panels without mutating the
+	// on-disk tribunal.yaml. The PanelName is still surfaced in the
+	// AdversaryRun.Panel field so output remains stable.
+	PanelOverride []dispatch.PanelMember
 }
 
 // Run executes the adversary stage. It locates artifacts, dispatches the
@@ -163,6 +170,9 @@ func Run(ctx context.Context, opts Options, in *Inputs, registry *dispatch.Regis
 	panel, err := cfg.Select(opts.PanelName)
 	if err != nil {
 		return nil, err
+	}
+	if len(opts.PanelOverride) > 0 {
+		panel.Members = opts.PanelOverride
 	}
 	if err := dispatch.ValidatePanel(panel); err != nil {
 		return nil, err
