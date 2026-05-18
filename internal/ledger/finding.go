@@ -78,19 +78,29 @@ const (
 	CategoryAdversarialInput      Category = "adversarial_input"
 )
 
-// Kind discriminates ledger entries. Both Finding and Resolution implement
-// Entry but share an envelope so a single ledger.jsonl can contain both.
+// Kind discriminates ledger entries. Finding, Resolution, and TriageEvent
+// all live in the same JSONL file; readers switch on Kind.
 type Kind string
 
 const (
 	KindFinding    Kind = "finding"
 	KindResolution Kind = "resolution"
+	// KindTriage is appended whenever a PM/QA/automation transitions a
+	// finding's triage state (open → in-progress → fixed, etc.). Multiple
+	// triage events per finding are expected; the ledger stays append-only.
+	KindTriage Kind = "triage"
 )
 
 // Finding is the load-bearing signed event filed by a reviewer or adversary
 // when they identify a problem. Stored as a JSONL line; the signature is
 // computed over the canonical JSON encoding of the struct with the
 // Signature field zeroed.
+//
+// ClawpatchID is set when the finding originated from a clawpatch
+// subprocess (Phase 2 absorption). It's the stable clawpatch finding ID
+// used by `tribunal fix` / `tribunal revalidate` to round-trip state back
+// to clawpatch's own store. Empty on findings filed by skill-trio or
+// adversary agents; readers must tolerate its absence on legacy entries.
 type Finding struct {
 	Kind        Kind      `json:"kind"`
 	FindingID   string    `json:"finding_id"`
@@ -105,6 +115,7 @@ type Finding struct {
 	Stake       int       `json:"stake"`
 	Timestamp   time.Time `json:"timestamp"`
 	Signature   string    `json:"signature"`
+	ClawpatchID string    `json:"clawpatch_id,omitempty"`
 }
 
 // NewFinding constructs a Finding with sensible defaults: severity-based

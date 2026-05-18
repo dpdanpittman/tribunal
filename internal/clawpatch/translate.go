@@ -130,6 +130,10 @@ func ToTribunalFinding(cp Finding, claimRoot, planID string, round int, kp *agen
 	claimURI := filepath.Join(".tribunal", "findings", findingID+".md")
 
 	fnd := ledger.NewFinding(findingID, planID, round, kp, agentLabel, sev, cat, claimHash, claimURI)
+	// Record the clawpatch finding ID explicitly so tribunal fix /
+	// tribunal revalidate can round-trip state back to clawpatch without
+	// having to parse the Tribunal FindingID.
+	fnd.ClawpatchID = cp.FindingID
 	if err := fnd.Sign(kp); err != nil {
 		return nil, fmt.Errorf("sign clawpatch finding %s: %w", cp.FindingID, err)
 	}

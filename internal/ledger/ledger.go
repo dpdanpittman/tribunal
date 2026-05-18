@@ -57,6 +57,16 @@ func (l *Ledger) AppendResolution(r *Resolution) error {
 	return l.appendJSON(r)
 }
 
+// AppendTriage writes a signed TriageEvent to the ledger. Multiple events
+// per finding are expected; readers reduce them in file order to get the
+// current state.
+func (l *Ledger) AppendTriage(t *TriageEvent) error {
+	if err := t.Verify(); err != nil {
+		return fmt.Errorf("ledger: refuse to write unsigned/invalid triage event for %s: %w", t.FindingID, err)
+	}
+	return l.appendJSON(t)
+}
+
 func (l *Ledger) appendJSON(v any) error {
 	if err := os.MkdirAll(filepath.Dir(l.path), 0o755); err != nil {
 		return err
@@ -122,6 +132,11 @@ func (l *Ledger) All() ([]*Finding, []*Resolution, error) {
 				return nil, nil, fmt.Errorf("ledger line %d (resolution): %w", lineNo, err)
 			}
 			resolutions = append(resolutions, &r)
+		case KindTriage:
+			// Skip here so the (Findings, Resolutions, error) signature
+			// stays backward-compatible. Callers that need triage events
+			// should use AllTriage() in addition to All().
+			continue
 		default:
 			// Unknown kind: skip but don't error — forward compat.
 			continue
@@ -147,6 +162,68 @@ func (l *Ledger) FindingByID(id string) (*Finding, error) {
 	return nil, nil
 }
 
+// AllTriage reads every TriageEvent from the ledger in file order.
+// Additive companion to All(); existing callers keep their (Findings,
+// Resolutions, error) shape unchanged.
+//
+// To compute the *current* triage status for a finding, scan the slice in
+// file order — the last matching FindingID wins.
+func (l *Ledger) AllTriage() ([]*TriageEvent, error) {
+	f, err := os.Open(l.path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []*TriageEvent
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		raw := scanner.Bytes()
+		if len(raw) == 0 {
+			continue
+		}
+		var stub struct {
+			Kind Kind `json:"kind"`
+		}
+		if err := json.Unmarshal(raw, &stub); err != nil {
+			return nil, fmt.Errorf("ledger line %d: %w", lineNo, err)
+		}
+		if stub.Kind != KindTriage {
+			continue
+		}
+		var t TriageEvent
+		if err := json.Unmarshal(raw, &t); err != nil {
+			return nil, fmt.Errorf("ledger line %d (triage): %w", lineNo, err)
+		}
+		events = append(events, &t)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+// LatestTriageByFinding returns the most recent triage status per
+// finding, keyed by FindingID. Findings without any triage event do not
+// appear in the result; callers should treat absence as TriageStatusOpen.
+func (l *Ledger) LatestTriageByFinding() (map[string]*TriageEvent, error) {
+	events, err := l.AllTriage()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]*TriageEvent, len(events))
+	for _, e := range events {
+		out[e.FindingID] = e // file-order overwrite = "latest wins"
+	}
+	return out, nil
+}
+
 // VerifyAll re-checks every signature in the ledger. Useful as an audit
 // command or precondition before reputation calculation.
 func (l *Ledger) VerifyAll() error {
@@ -162,6 +239,15 @@ func (l *Ledger) VerifyAll() error {
 	for _, r := range resolutions {
 		if err := r.Verify(); err != nil {
 			return fmt.Errorf("verify resolution %s: %w", r.FindingID, err)
+		}
+	}
+	triage, err := l.AllTriage()
+	if err != nil {
+		return err
+	}
+	for _, t := range triage {
+		if err := t.Verify(); err != nil {
+			return fmt.Errorf("verify triage %s: %w", t.FindingID, err)
 		}
 	}
 	return nil

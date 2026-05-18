@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dpdanpittman/tribunal/internal/agent"
 	"github.com/dpdanpittman/tribunal/internal/ledger"
 )
 
@@ -21,6 +22,7 @@ func newLedgerCmd() *cobra.Command {
 		newLedgerSummaryCmd(),
 		newLedgerLeaderboardCmd(),
 		newLedgerFindCmd(),
+		newLedgerTriageCmd(),
 		newLedgerVerifyCmd(),
 	)
 	return cmd
@@ -115,14 +117,109 @@ func newLedgerFindCmd() *cobra.Command {
 			fmt.Printf("Claim URI:    %s\n", f.ClaimURI)
 			fmt.Printf("Stake:        %d\n", f.Stake)
 			fmt.Printf("Timestamp:    %s\n", f.Timestamp.Format(time.RFC3339))
+			if f.ClawpatchID != "" {
+				fmt.Printf("Clawpatch ID: %s\n", f.ClawpatchID)
+			}
 			if err := f.Verify(); err != nil {
 				fmt.Printf("Signature:    INVALID (%v)\n", err)
 			} else {
 				fmt.Printf("Signature:    OK\n")
 			}
+			// Surface the latest triage state if one exists.
+			triage, err := l.LatestTriageByFinding()
+			if err == nil {
+				if t, ok := triage[f.FindingID]; ok {
+					fmt.Printf("Triage:       %s (%s)\n", t.Status, t.Timestamp.Format(time.RFC3339))
+					if t.Note != "" {
+						fmt.Printf("Triage note:  %s\n", t.Note)
+					}
+				}
+			}
 			return nil
 		},
 	}
+}
+
+func newLedgerTriageCmd() *cobra.Command {
+	var status string
+	var note string
+	var triagerLabel string
+	var noAutoRegister bool
+	cmd := &cobra.Command{
+		Use:   "triage <finding-id>",
+		Short: "Append a triage event for a finding (open|in-progress|fixed|false-positive|wont-fix|uncertain)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			findingID := args[0]
+			st := ledger.TriageStatus(status)
+			if !st.IsValid() {
+				return fmt.Errorf("invalid status %q (want one of: open, in-progress, fixed, false-positive, wont-fix, uncertain)", status)
+			}
+			l := projectLedger()
+			fnd, err := l.FindingByID(findingID)
+			if err != nil {
+				return err
+			}
+			if fnd == nil {
+				return fmt.Errorf("finding %q not found", findingID)
+			}
+			reg, err := defaultRegistry()
+			if err != nil {
+				return err
+			}
+			kp, label, err := resolveTriagerKey(reg, triagerLabel, !noAutoRegister)
+			if err != nil {
+				return err
+			}
+			evt := ledger.NewTriageEvent(findingID, fnd.PlanID, st, kp, label, note)
+			if err := evt.Sign(kp); err != nil {
+				return err
+			}
+			if err := l.AppendTriage(evt); err != nil {
+				return err
+			}
+			fmt.Printf("✓ triage %s → %s by %s\n", findingID, st, label)
+			if note != "" {
+				fmt.Printf("  note: %s\n", note)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&status, "status", "", "open|in-progress|fixed|false-positive|wont-fix|uncertain (required)")
+	cmd.Flags().StringVar(&note, "note", "", "Optional free-text note recorded with the triage event")
+	cmd.Flags().StringVar(&triagerLabel, "as", "human-triager", "Agent label to sign the triage event")
+	cmd.Flags().BoolVar(&noAutoRegister, "no-auto-register", false, "Refuse to auto-create the triager agent keypair")
+	_ = cmd.MarkFlagRequired("status")
+	return cmd
+}
+
+// resolveTriagerKey returns a keypair to sign a triage event with. If the
+// triager agent does not exist and autoRegister is true, a new keypair is
+// created and registered with the qa role (because triage is a QA-side
+// action, not an adversarial one).
+func resolveTriagerKey(reg *agent.Registry, label string, autoRegister bool) (*agent.Keypair, string, error) {
+	if label == "" {
+		label = "human-triager"
+	}
+	if existing, err := reg.Get(label); err == nil {
+		kp, err := reg.LoadKeypair(existing.Label)
+		if err != nil {
+			return nil, label, err
+		}
+		return kp, existing.Label, nil
+	}
+	if !autoRegister {
+		return nil, label, fmt.Errorf("no registered agent for %q (run `tribunal agents add` or omit --no-auto-register)", label)
+	}
+	a, err := reg.Add(label, "human", agent.RoleQA)
+	if err != nil {
+		return nil, label, err
+	}
+	kp, err := reg.LoadKeypair(a.Label)
+	if err != nil {
+		return nil, label, err
+	}
+	return kp, a.Label, nil
 }
 
 func newLedgerVerifyCmd() *cobra.Command {
