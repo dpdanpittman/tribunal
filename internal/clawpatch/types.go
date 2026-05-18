@@ -109,6 +109,38 @@ type ReviewOpts struct {
 	Feature string
 	// DryRun runs without invoking the provider. Useful for plumbing tests.
 	DryRun bool
+	// PromptFile passes through `--prompt-file <path>` (clawpatch PR #64,
+	// landed upstream 2026-05-18). Empty = no extra reviewer guidance.
+	// Use "-" to read from stdin.
+	PromptFile string
+	// ExportTribunalLedger passes through `--export-tribunal-ledger <path>`
+	// (clawpatch PR #65, landed upstream 2026-05-18). Empty = no export.
+	// The emitted JSONL contains thin signed-ledger-shaped entries (no
+	// body / evidence / reasoning); useful for a downstream consumer that
+	// wants ledger entries without rendering lens reports. The lens path
+	// still needs ListFindings for full bodies.
+	ExportTribunalLedger string
+}
+
+// ExportEntry mirrors a single line of the JSONL emitted by
+// `clawpatch review --export-tribunal-ledger`. Field shapes match the
+// schema documented inline at maybeExportTribunalLedger in clawpatch's
+// app.ts.
+type ExportEntry struct {
+	Kind        string  `json:"kind"`         // "clawpatch-review"
+	FindingID   string  `json:"finding_id"`   // stable clawpatch id
+	PlanID      *string `json:"plan_id"`      // always null on this path
+	Round       int     `json:"round"`        // always 1
+	AgentPubkey *string `json:"agent_pubkey"` // null — Tribunal signs on ingest
+	AgentLabel  string  `json:"agent_label"`  // "clawpatch-<provider>"
+	Severity    string  `json:"severity"`     // critical|high|medium|low
+	Category    string  `json:"category"`     // bug|security|...
+	ClaimHash   string  `json:"claim_hash"`   // clawpatch finding signature
+	ClaimURI    *string `json:"claim_uri"`    // null on this path
+	Stake       *int    `json:"stake"`        // null on this path
+	Timestamp   string  `json:"timestamp"`    // ISO-8601
+	Signature   *string `json:"signature"`    // null — Tribunal signs on ingest
+	RunID       string  `json:"run_id"`
 }
 
 // FixOpts are the flags Tribunal forwards to `clawpatch fix`.

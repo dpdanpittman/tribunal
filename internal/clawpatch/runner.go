@@ -71,6 +71,15 @@ func (r *Runner) Map(ctx context.Context) (*MapResult, error) {
 // Review runs `clawpatch review --json`. Note: the per-finding records
 // land on disk at `.clawpatch/findings/*.json`; the returned ReviewResult
 // is just a summary. Call ListFindings to pull the full records.
+//
+// If opts.ExportTribunalLedger is set, `--export-tribunal-ledger <path>`
+// is appended and clawpatch writes a JSONL file with thin signed-ledger-
+// shaped entries at that path (clawpatch PR #65). Parse it with
+// ListFindingsFromExport. Useful for bulk-ingest consumers that don't
+// need finding bodies.
+//
+// If opts.PromptFile is set, `--prompt-file <path>` is appended
+// (clawpatch PR #64). Use "-" to read prompt content from stdin.
 func (r *Runner) Review(ctx context.Context, opts ReviewOpts) (*ReviewResult, error) {
 	args := []string{"review"}
 	if opts.Limit > 0 {
@@ -88,6 +97,12 @@ func (r *Runner) Review(ctx context.Context, opts ReviewOpts) (*ReviewResult, er
 	if opts.DryRun {
 		args = append(args, "--dry-run")
 	}
+	if opts.PromptFile != "" {
+		args = append(args, "--prompt-file", opts.PromptFile)
+	}
+	if opts.ExportTribunalLedger != "" {
+		args = append(args, "--export-tribunal-ledger", opts.ExportTribunalLedger)
+	}
 	out, code, err := r.run(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("clawpatch review failed (exit %d): %w\nstdout/stderr: %s", code, err, out.String())
@@ -97,6 +112,36 @@ func (r *Runner) Review(ctx context.Context, opts ReviewOpts) (*ReviewResult, er
 		return nil, fmt.Errorf("clawpatch review: parse JSON: %w (stdout was: %s)", perr, out.String())
 	}
 	return &res, nil
+}
+
+// ListFindingsFromExport reads the JSONL file produced by
+// `clawpatch review --export-tribunal-ledger`. Each line is one
+// ExportEntry (thin, no body). Useful for consumers that bulk-ingest
+// signed-ledger-shaped entries without needing finding bodies — the
+// existing ListFindings is still the right call when bodies are
+// required (e.g., to render lens reports).
+func (r *Runner) ListFindingsFromExport(_ context.Context, path string) ([]ExportEntry, error) {
+	if path == "" {
+		return nil, errors.New("clawpatch.ListFindingsFromExport: path is required")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	var out []ExportEntry
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var e ExportEntry
+		if err := dec.Decode(&e); err != nil {
+			return nil, fmt.Errorf("parse export entry: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // Fix runs `clawpatch fix --finding <id> --json`. Exit codes:
