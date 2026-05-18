@@ -16,6 +16,8 @@ The methodology is a synthesis of two existing patterns:
 
 The novel piece neither has: **reputation-weighted findings**. Agents have verifiable identities (ed25519 keypairs), every finding is signed and recorded, outcomes are settled by PMs/QA, and reputation deltas land on-chain.
 
+**Live**: [tribunal.mabus.ai](https://tribunal.mabus.ai) — methodology, [sample audits](https://tribunal.mabus.ai/audits/), and the [on-chain leaderboard](https://tribunal.mabus.ai/leaderboard) that queries the deployed contract on `xion-testnet-2` from the browser.
+
 ## Quick start
 
 > Requires Go 1.23+. Optional: an Anthropic API key (`ANTHROPIC_API_KEY`) for the Claude adversary panel; v0.3+ adds Burnt XION on-chain settlement.
