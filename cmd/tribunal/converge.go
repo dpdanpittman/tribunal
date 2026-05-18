@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,18 +18,20 @@ import (
 
 func newConvergeCmd() *cobra.Command {
 	var (
-		planID         string
-		diffSpec       string
-		maxRounds      int
-		maxTokens      int
-		maxWallclock   time.Duration
-		severityFloor  string
-		rotationSpec   string
-		stopOnSpec     string
-		adversaryMD    string
-		bucket         string
-		noLedger       bool
-		noAutoRegister bool
+		planID           string
+		diffSpec         string
+		maxRounds        int
+		maxTokens        int
+		maxWallclock     time.Duration
+		severityFloor    string
+		rotationSpec     string
+		stopOnSpec       string
+		adversaryMD      string
+		bucket           string
+		noLedger         bool
+		noAutoRegister   bool
+		implementerModel string
+		autoApply        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "converge",
@@ -109,7 +112,26 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 					MaxTokens:    maxTokens,
 					MaxWallclock: maxWallclock,
 				},
-				DispatchConfig: cfg,
+				DispatchConfig:    cfg,
+				AutoApply:         autoApply,
+				IntentLoader:      intentLoaderForCWD(cwd),
+				DiffLoader:        diffLoaderForCWD(cwd, diffSpec),
+				FindingBodyLookup: findingBodyLookupForCWD(cwd),
+			}
+			if implementerModel != "" {
+				claude, err := dispatch.NewClaudeProvider()
+				if err != nil {
+					return fmt.Errorf("--implementer requires ANTHROPIC_API_KEY: %w", err)
+				}
+				ctrl.Implementer = &converge.ClaudeImplementer{
+					Provider:    claude,
+					Model:       implementerModel,
+					Temperature: 0,
+					MaxTokens:   8192,
+					LabelStr:    "implementer-" + implementerModel,
+				}
+			} else if autoApply {
+				return fmt.Errorf("--auto-apply requires --implementer (nothing to apply)")
 			}
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -156,7 +178,69 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 	cmd.Flags().StringVar(&bucket, "bucket", "composite:model_tier,focus", "Diversity bucket axis passed through to the adversary stage")
 	cmd.Flags().BoolVar(&noLedger, "no-ledger", false, "Do not sign + append per-round findings to the ledger")
 	cmd.Flags().BoolVar(&noAutoRegister, "no-auto-register", false, "Refuse to auto-create adversary agent keypairs")
+	cmd.Flags().StringVar(&implementerModel, "implementer", "", "Claude model id to author patches between rounds (e.g. claude-opus-4-7). Empty disables the implementer (M1 output-only).")
+	cmd.Flags().BoolVar(&autoApply, "auto-apply", false, "Apply the implementer's patch via `git apply` after authoring. Requires --implementer; refuses on a dirty working tree.")
 	return cmd
+}
+
+// intentLoaderForCWD returns a closure that reads .tribunal/plans/<id>/intent.md
+// for the implementer prompt. Missing file → empty string (no error).
+func intentLoaderForCWD(cwd string) func(planID string) string {
+	return func(planID string) string {
+		path := filepath.Join(cwd, ".tribunal", "plans", planID, "intent.md")
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
+		return string(body)
+	}
+}
+
+// diffLoaderForCWD resolves the same DiffSpec the adversary stage uses
+// so the implementer sees the same review surface. Errors collapse to
+// empty string — the implementer prompt notes when no diff is captured.
+func diffLoaderForCWD(cwd, spec string) func(t converge.ConvergenceTarget) string {
+	return func(_ converge.ConvergenceTarget) string {
+		if spec == "" {
+			return ""
+		}
+		// review.resolveDiff is unexported; reuse the FindInputs path
+		// which already handles the same diff-spec semantics.
+		in, err := review.FindInputs(cwd, "", spec)
+		if err != nil || in == nil {
+			return ""
+		}
+		return in.Diff
+	}
+}
+
+// findingBodyLookupForCWD walks .tribunal/findings/ on disk and indexes
+// per-finding markdown files by claim_hash. The adversary stage writes
+// these alongside the ledger entries.
+func findingBodyLookupForCWD(cwd string) func(findings []converge.RoundFinding) map[string]string {
+	return func(findings []converge.RoundFinding) map[string]string {
+		out := map[string]string{}
+		root := filepath.Join(cwd, ".tribunal", "findings")
+		for _, f := range findings {
+			// Findings filed by the adversary stage are named
+			// F-<plan>-<agent>-<idx>.md but indexed by ClaimHash inside.
+			// Cheap fallback: read every file and match on the claim_hash
+			// embedded as `- Claim hash: <h>`. For a large findings dir
+			// this is O(N×M); the dir is plan-scoped so N stays small.
+			matches, _ := filepath.Glob(filepath.Join(root, "*.md"))
+			for _, m := range matches {
+				body, err := os.ReadFile(m)
+				if err != nil {
+					continue
+				}
+				if strings.Contains(string(body), f.ClaimHash) {
+					out[f.ClaimHash] = string(body)
+					break
+				}
+			}
+		}
+		return out
+	}
 }
 
 // cliAdversaryStage adapts review.Run to the converge.AdversaryStage

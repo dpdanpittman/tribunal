@@ -14,6 +14,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.2] — 2026-05-17
+
+The implementer release. v0.4.1 shipped the convergence loop without fix authoring; v0.4.2 ships ADR-0001 milestone M2 — a pluggable Implementer that drafts a patch between rounds.
+
+### Added
+
+- **`Implementer` interface** in `internal/converge/`. `Patch(ctx, PatchInput) → (*PatchOutput, error)` takes the round's unresolved Critical/Warning findings plus intent + diff + per-finding bodies and returns a unified-diff patch (or a structured refusal).
+- **`ClaudeImplementer`** — production impl on top of `dispatch.ClaudeProvider.Generate`. Single-turn prompt with a strict two-block response format (REASONING + fenced PATCH diff); reasoning is preserved alongside the patch for the audit trail.
+- **`dispatch.ClaudeProvider.Generate`** — raw text-completion helper. Same wire shape as `Attack` minus the adversary-report parser, so the implementer (and future Plan/Implement stages) can reach the Anthropic Messages API without going through the dispatch panel surface.
+- **`Controller.invokeImplementer`** — called when a round produces unresolved Critical/Warning AND `Controller.Implementer` is non-nil. Persists artifacts under `.tribunal/convergence/<plan-id>/round-NNNN-patch.{diff,md}` and (when `AutoApply` is true) routes the patch through `git apply`.
+- **`ApplyPatch(ctx, projectRoot, patch)`** — `git apply --check` + `git apply`. Refuses on a dirty working tree (conflation of implementer hunks with operator pending changes). Returns the list of touched files parsed from `git apply --numstat`.
+- **Controller hooks**: `IntentLoader`, `DiffLoader`, `FindingBodyLookup` — injection points the CLI wires to feed the implementer prompt with on-disk artifacts (plan intent, raw diff, per-finding markdown). Keeps the converge package free of filesystem assumptions.
+- **CLI flags**:
+  - `--implementer <model-id>` — opt in to LLM patch authoring. Empty (default) keeps the v0.4.1 M1 output-only behavior. Models: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`, or any future Anthropic model id.
+  - `--auto-apply` — apply the patch via `git apply` after authoring. Requires `--implementer`. Refused on dirty tree. The controller still exits `needs_fixes` so the operator runs tests + commits + re-invokes.
+
+### Safety
+
+- The patch flow always exits with `StatusNeedsFixes`, even after `--auto-apply`. M3 (auto-apply + auto-continue) is explicitly out of v0.4.2 scope.
+- `git apply --check` runs before any mutation; failures keep the working tree untouched.
+- Dirty-tree refusal is non-negotiable in v0.4.2 — the message lands as the round's `PatchError` so the audit trail records why no apply happened.
+- The implementer system prompt forbids invented file paths / symbol names and requires REFUSE for architectural changes that can't ship in one patch. Refusal reasoning is persisted to `round-NNNN-patch.md` even with no diff.
+
+### RoundResult schema extension
+
+The `RoundResult` struct (and its on-disk JSON) gain implementer fields: `patch_authored`, `patch_path`, `patch_readme`, `patch_refused`, `patch_applied`, `patch_files`, `patch_tokens`, `patch_error`. Old rounds without these fields decode cleanly — the JSON tags are `omitempty`.
+
+### Tests
+
+- `TestController_ImplementerAuthorsPatchOnFindings` — implementer is invoked when a round produces a Critical finding; patch + readme land on disk; `AutoApply=false` means no `git apply`.
+- `TestController_ImplementerNotInvokedForSuggestionsOnly` — Suggestion-only rounds keep the loop running without involving the implementer.
+- `TestController_ImplementerRefuse` — `Refused=true` persists the reasoning readme but no `.diff` file.
+- `TestController_ImplementerPropagatesContext` — IntentLoader / DiffLoader / FindingBodyLookup hooks are forwarded into the PatchInput.
+- `TestApplyPatch_RefusesOnDirtyTree` — guard fires when uncommitted changes are present.
+- `TestApplyPatch_AppliesToCleanTree` — happy path: `git apply --check` passes, mutation visible in the target file.
+- `TestParseImplementerResponse` — pins the REASONING + `diff` parser against valid + REFUSE response shapes.
+
+### What v0.4.2 does NOT ship
+
+- **M3 (auto-continue loop)** — controller doesn't dispatch the next round in the same invocation after a patch is applied. Operator still drives test/commit/re-invoke. Targeted v0.5+.
+- **Implementer reputation feedback** — patches that fail `git apply --check` don't yet penalize the implementer's on-chain balance. The audit trail records the failures; the on-chain settle hook follows.
+- **Multi-model implementer panel** — v0.4.2 ships one implementer at a time; a competing-implementers panel where multiple LLMs propose patches and the operator picks is a future expansion (no ADR yet).
+
 ## [0.4.1] — 2026-05-17
 
 The convergence-controller release. Single-pass review tells you what's wrong right now; a converging review tells you when you're done. v0.4.1 ships milestone M1 of [ADR-0001](./docs/adr/0001-convergence-controller.md) — the output-only loop. The implementer interface (M2) and auto-apply (M3) follow in later releases.

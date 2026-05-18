@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,8 +39,15 @@ type RoundOutput struct {
 	TokenCost      int
 }
 
-// Controller orchestrates the convergence loop. M1 is output-only — the
-// Implementer field is reserved for M2 and ignored in v0.4.1.
+// Controller orchestrates the convergence loop. M1 is output-only;
+// v0.4.2 (M2) adds the Implementer hook — when a round produces
+// unresolved Critical/Warning findings AND Implementer is non-nil, the
+// controller asks the implementer for a patch, persists it under the
+// convergence directory, and (when AutoApply is true) calls
+// ApplyPatch to apply it via `git apply`. The controller still exits
+// with StatusNeedsFixes after either action so the operator drives
+// validation + commit + re-invocation; M3 will close the loop within
+// a single invocation.
 type Controller struct {
 	// Adversary runs one round (lens + adversary stage).
 	Adversary AdversaryStage
@@ -57,6 +66,30 @@ type Controller struct {
 	// DispatchConfig is the loaded tribunal.yaml view the rotator uses
 	// as its base panel pool.
 	DispatchConfig dispatch.Config
+
+	// Implementer authors a patch when a round produces unresolved
+	// Critical/Warning findings. Nil → M1 output-only behavior (the loop
+	// exits with NeedsFixes and the operator authors the patch manually).
+	Implementer Implementer
+
+	// AutoApply controls whether the controller invokes ApplyPatch on
+	// the implementer's output. Default false (M2 default: present
+	// patch on disk, exit with NeedsFixes). Set true via --auto-apply
+	// to also run `git apply` against the working tree.
+	AutoApply bool
+
+	// FindingBodyLookup is an optional hook the CLI wires to resolve
+	// finding.ClaimURI → file body so the implementer prompt can
+	// include the full per-finding markdown. Nil → empty bodies.
+	FindingBodyLookup func(findings []RoundFinding) map[string]string
+
+	// IntentLoader is an optional hook the CLI wires to load the plan's
+	// intent.md body for the implementer prompt. Nil → empty intent.
+	IntentLoader func(planID string) string
+
+	// DiffLoader is an optional hook the CLI wires to expand DiffSpec
+	// into the actual diff text. Nil → empty diff.
+	DiffLoader func(target ConvergenceTarget) string
 }
 
 // Run drives the convergence loop. Each round: rotate the panel, dispatch
@@ -210,11 +243,26 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 		}
 
 		// Otherwise: did this round produce unresolved Critical/Warning
-		// findings? If so, the loop pauses for operator action.
+		// findings? If so, the loop pauses for operator action. If an
+		// Implementer is configured (M2), invoke it to author a patch
+		// before exiting — operators get a tangible artifact to review
+		// or apply instead of just a finding list.
 		if needsFixes(final) {
+			if c.Implementer != nil {
+				c.invokeImplementer(ctx, &final, target)
+				// Persist the round again so the patch fields are on disk.
+				history[len(history)-1] = final
+				_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
+				// Refresh result.Rounds tail.
+				result.Rounds[len(result.Rounds)-1] = final
+			}
 			result.Status = StatusNeedsFixes
 			result.Reason = fmt.Sprintf("round %d produced %d critical + %d warning finding(s); operator action required",
 				roundNum, countSeverity(final, "critical"), countSeverity(final, "warning"))
+			if final.PatchAuthored {
+				result.Reason += fmt.Sprintf(" — implementer patch at %s%s",
+					final.PatchPath, applyTag(final))
+			}
 			return result, nil
 		}
 	}
@@ -241,4 +289,135 @@ func countSeverity(r RoundResult, want string) int {
 		}
 	}
 	return n
+}
+
+// invokeImplementer asks the configured Implementer for a patch
+// addressing this round's unresolved Critical/Warning findings, persists
+// it under .tribunal/convergence/<plan>/round-NNNN-patch.{diff,md}, and
+// (when AutoApply is true) routes it through ApplyPatch. Mutates the
+// round in place with PatchAuthored / PatchPath / PatchApplied state.
+//
+// Failures are recorded on the round via PatchError but don't propagate
+// — the controller still surfaces NeedsFixes so the operator can fall
+// back to manual fix authoring.
+func (c *Controller) invokeImplementer(ctx context.Context, round *RoundResult, target ConvergenceTarget) {
+	// Filter findings to the actionable subset (Critical + Warning).
+	actionable := make([]RoundFinding, 0, len(round.Findings))
+	for _, f := range round.Findings {
+		s := strings.ToLower(f.Severity)
+		if s == "critical" || s == "warning" {
+			actionable = append(actionable, f)
+		}
+	}
+	if len(actionable) == 0 {
+		return
+	}
+	in := PatchInput{
+		PlanID:      target.PlanID,
+		ProjectRoot: target.ProjectRoot,
+		Round:       round.Round,
+		Findings:    actionable,
+	}
+	if c.IntentLoader != nil {
+		in.Intent = c.IntentLoader(target.PlanID)
+	}
+	if c.DiffLoader != nil {
+		in.Diff = c.DiffLoader(target)
+	}
+	if c.FindingBodyLookup != nil {
+		in.FindingBodies = c.FindingBodyLookup(actionable)
+	}
+
+	out, err := c.Implementer.Patch(ctx, in)
+	if err != nil {
+		round.PatchError = err.Error()
+		return
+	}
+	round.PatchTokens = out.TokenCost
+	round.PatchRefused = out.Refused
+	if out.Refused || strings.TrimSpace(out.Patch) == "" {
+		// Save the reasoning even when no patch — it's the implementer
+		// telling the operator what they couldn't do.
+		path, _ := saveImplementerArtifacts(target.ProjectRoot, target.PlanID, round.Round, "", out.Reasoning)
+		round.PatchReadme = path
+		return
+	}
+
+	diffPath, readmePath, err := saveImplementerArtifactsBoth(target.ProjectRoot, target.PlanID, round.Round, out.Patch, out.Reasoning)
+	if err != nil {
+		round.PatchError = err.Error()
+		return
+	}
+	round.PatchAuthored = true
+	round.PatchPath = diffPath
+	round.PatchReadme = readmePath
+
+	if c.AutoApply {
+		files, err := ApplyPatch(ctx, target.ProjectRoot, out.Patch)
+		if err != nil {
+			round.PatchError = err.Error()
+			return
+		}
+		round.PatchApplied = true
+		round.PatchFiles = files
+	}
+}
+
+func applyTag(r RoundResult) string {
+	if r.PatchApplied {
+		return " (APPLIED — review + test before commit)"
+	}
+	if r.PatchAuthored {
+		return " (NOT applied — review before `git apply`)"
+	}
+	if r.PatchRefused {
+		return " (implementer REFUSED — see reasoning)"
+	}
+	if r.PatchError != "" {
+		return " (implementer failed: " + r.PatchError + ")"
+	}
+	return ""
+}
+
+// saveImplementerArtifactsBoth writes the patch + reasoning files and
+// returns their paths. Naming: round-NNNN-patch.diff + round-NNNN-patch.md.
+func saveImplementerArtifactsBoth(projectRoot, planID string, round int, patch, reasoning string) (diffPath, readmePath string, err error) {
+	dir := LedgerDir(projectRoot, planID)
+	if err = os.MkdirAll(dir, 0o755); err != nil {
+		return "", "", err
+	}
+	diffName := fmt.Sprintf("round-%04d-patch.diff", round)
+	readmeName := fmt.Sprintf("round-%04d-patch.md", round)
+	diffPath = filepath.Join(dir, diffName)
+	readmePath = filepath.Join(dir, readmeName)
+	if err = os.WriteFile(diffPath, []byte(ensureTrailingNewline(patch)), 0o644); err != nil {
+		return "", "", err
+	}
+	body := "# Implementer reasoning — round " + fmt.Sprintf("%d", round) + "\n\n" + strings.TrimSpace(reasoning) + "\n"
+	if err = os.WriteFile(readmePath, []byte(body), 0o644); err != nil {
+		return "", "", err
+	}
+	return diffPath, readmePath, nil
+}
+
+// saveImplementerArtifacts is the refused/no-patch variant — writes only
+// the reasoning. Returns the readme path.
+func saveImplementerArtifacts(projectRoot, planID string, round int, _, reasoning string) (string, error) {
+	dir := LedgerDir(projectRoot, planID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	readmePath := filepath.Join(dir, fmt.Sprintf("round-%04d-patch.md", round))
+	body := "# Implementer reasoning — round " + fmt.Sprintf("%d", round) + " (no patch)\n\n" + strings.TrimSpace(reasoning) + "\n"
+	if err := os.WriteFile(readmePath, []byte(body), 0o644); err != nil {
+		return "", err
+	}
+	return readmePath, nil
+}
+
+func ensureTrailingNewline(s string) string {
+	if strings.HasSuffix(s, "\n") {
+		return s
+	}
+	return s + "\n"
 }

@@ -152,6 +152,86 @@ func (c *ClaudeProvider) Attack(ctx context.Context, member PanelMember, system,
 	}, nil
 }
 
+// GenerateOptions configures a raw Generate call.
+type GenerateOptions struct {
+	Model       string
+	Temperature float64
+	MaxTokens   int
+	System      string
+	User        string
+}
+
+// GenerateResult is what Generate returns: raw text plus best-effort
+// token usage counts pulled from the Anthropic Usage envelope.
+type GenerateResult struct {
+	Text         string
+	InputTokens  int
+	OutputTokens int
+}
+
+// Generate is a raw text-completion call to /v1/messages — same wire
+// shape as Attack but without the adversary-report parsing layer. Used
+// by callers that need raw model output (v0.4.2 convergence
+// Implementer; future Plan/Implement stages).
+func (c *ClaudeProvider) Generate(ctx context.Context, opts GenerateOptions) (*GenerateResult, error) {
+	if c.APIKey == "" {
+		return nil, errors.New("dispatch.claude: APIKey unset")
+	}
+	maxTokens := opts.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 4096
+	}
+	body := claudeRequest{
+		Model:       opts.Model,
+		MaxTokens:   maxTokens,
+		Temperature: opts.Temperature,
+		System:      opts.System,
+		Messages: []claudeMessage{
+			{Role: "user", Content: opts.User},
+		},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("claude.generate: marshal: %w", err)
+	}
+	url := strings.TrimRight(c.baseURL(), "/") + "/v1/messages"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("claude.generate: new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.APIKey)
+	req.Header.Set("anthropic-version", c.version())
+
+	resp, err := c.client().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("claude.generate: do request: %w", err)
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("claude.generate: read response: %w", err)
+	}
+	if resp.StatusCode/100 != 2 {
+		var apiErr claudeError
+		_ = json.Unmarshal(respBytes, &apiErr)
+		msg := apiErr.Error.Message
+		if msg == "" {
+			msg = string(respBytes)
+		}
+		return nil, fmt.Errorf("claude.generate: HTTP %d: %s", resp.StatusCode, msg)
+	}
+	var apiResp claudeResponse
+	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
+		return nil, fmt.Errorf("claude.generate: decode: %w (body=%s)", err, truncateString(string(respBytes), 500))
+	}
+	return &GenerateResult{
+		Text:         concatTextBlocks(apiResp.Content),
+		InputTokens:  apiResp.Usage.InputTokens,
+		OutputTokens: apiResp.Usage.OutputTokens,
+	}, nil
+}
+
 func (c *ClaudeProvider) baseURL() string {
 	if c.BaseURL == "" {
 		return "https://api.anthropic.com"

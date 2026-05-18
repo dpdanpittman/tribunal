@@ -81,6 +81,18 @@ type RoundResult struct {
 
 	// Duration is the round's wallclock cost.
 	Duration time.Duration `json:"duration_ns"`
+
+	// Patch fields are populated by the M2 implementer flow when the
+	// controller's Implementer is non-nil and the round produced
+	// unresolved Critical/Warning findings.
+	PatchAuthored bool     `json:"patch_authored,omitempty"`
+	PatchPath     string   `json:"patch_path,omitempty"`
+	PatchReadme   string   `json:"patch_readme,omitempty"`
+	PatchRefused  bool     `json:"patch_refused,omitempty"`
+	PatchApplied  bool     `json:"patch_applied,omitempty"`
+	PatchFiles    []string `json:"patch_files,omitempty"`
+	PatchTokens   int      `json:"patch_tokens,omitempty"`
+	PatchError    string   `json:"patch_error,omitempty"`
 }
 
 // RoundFinding is the controller's view of one finding — a normalized

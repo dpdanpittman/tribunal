@@ -1,7 +1,7 @@
 # ADR-0001: Convergence Controller
 
-**Status:** Implemented — M1 in v0.4.1 (2026-05-17); M2 / M3 still scheduled.
-**Date:** 2026-05-13 (proposed) → 2026-05-17 (M1 shipped)
+**Status:** Implemented — M1 in v0.4.1 + M2 in v0.4.2 (both 2026-05-17); M3 still scheduled.
+**Date:** 2026-05-13 (proposed) → 2026-05-17 (M1 + M2 shipped)
 **Driver:** P-v033-audit, F-NEW-403 — observed three audit cycles producing structurally-similar defects without converging.
 
 ## Context
@@ -78,7 +78,7 @@ Flags:
 - `--rotation <strategy>` — panel rotation scheme (default `composite:vendor_family,focus`)
 - `--stop-on <criterion>` — comma-separated; default `consecutive-clean(2)`
 
-**M2 — Implementer interface (v0.4.1+)**
+**M2 — Implementer interface (shipped v0.4.2 at 2026-05-17)**
 
 Define `Implementer` and provide a Claude implementation: given findings + diff + intent, returns a patch. The controller can be invoked with `--implementer=claude-opus-4-7` to delegate fix authoring to an LLM. Patches are presented for human approval by default; `--auto-apply` skips approval.
 
