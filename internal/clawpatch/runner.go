@@ -99,6 +99,140 @@ func (r *Runner) Review(ctx context.Context, opts ReviewOpts) (*ReviewResult, er
 	return &res, nil
 }
 
+// Fix runs `clawpatch fix --finding <id> --json`. Exit codes:
+//
+//	exit 0 = patch planned (dry-run) or applied + validated (live)
+//	exit 3 = dirty worktree (refuses live fix; dry-run still works)
+//	exit 6 = patch applied but validation commands failed
+//
+// On exit 6 clawpatch still emits a valid JSON object describing the
+// failed patch attempt; the wrapper returns both the parsed FixResult
+// and the wrapped error so callers can distinguish "validation failed"
+// from "everything broke".
+func (r *Runner) Fix(ctx context.Context, opts FixOpts) (*FixResult, error) {
+	if opts.Finding == "" {
+		return nil, errors.New("clawpatch.Fix: Finding is required")
+	}
+	args := []string{"fix", "--finding", opts.Finding}
+	if opts.DryRun {
+		args = append(args, "--dry-run")
+	}
+	out, code, runErr := r.run(ctx, args...)
+	// Parse first — clawpatch emits JSON even on the validation-failed exit 6.
+	var res FixResult
+	parseErr := decodeJSON(out.Bytes(), &res)
+	if runErr != nil {
+		if parseErr == nil {
+			return &res, fmt.Errorf("clawpatch fix exit %d: %w", code, runErr)
+		}
+		return nil, fmt.Errorf("clawpatch fix failed (exit %d): %w\nstdout/stderr: %s", code, runErr, out.String())
+	}
+	if parseErr != nil {
+		return nil, fmt.Errorf("clawpatch fix: parse JSON: %w (stdout was: %s)", parseErr, out.String())
+	}
+	return &res, nil
+}
+
+// Revalidate runs `clawpatch revalidate --json` in either single-finding
+// or bulk mode. The returned slice has one outcome per finding the
+// subprocess actually revalidated. In single-finding mode the slice has
+// length 1.
+func (r *Runner) Revalidate(ctx context.Context, opts RevalidateOpts) ([]RevalidateOutcome, error) {
+	args := []string{"revalidate"}
+	switch {
+	case opts.Finding != "":
+		args = append(args, "--finding", opts.Finding)
+	case opts.All:
+		args = append(args, "--all")
+	case opts.Since != "":
+		args = append(args, "--since", opts.Since)
+	default:
+		return nil, errors.New("clawpatch.Revalidate: one of Finding / All / Since must be set")
+	}
+	if opts.Limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", opts.Limit))
+	}
+	out, code, err := r.run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("clawpatch revalidate failed (exit %d): %w\nstdout/stderr: %s", code, err, out.String())
+	}
+	// Single-finding mode returns a single object with {finding, outcome,
+	// reasoning}. Bulk mode returns a summary object without per-finding
+	// detail. The two shapes need different handling.
+	raw := bytes.TrimSpace(out.Bytes())
+	if idx := bytes.IndexByte(raw, '{'); idx > 0 {
+		raw = raw[idx:]
+	}
+	if opts.Finding != "" {
+		var single RevalidateOutcome
+		if perr := json.Unmarshal(raw, &single); perr != nil {
+			return nil, fmt.Errorf("clawpatch revalidate: parse JSON: %w (stdout was: %s)", perr, out.String())
+		}
+		return []RevalidateOutcome{single}, nil
+	}
+	// Bulk mode: the JSON summary doesn't carry per-finding outcomes, so
+	// we re-derive them by reading clawpatch's on-disk finding files after
+	// the run. The runId-by-runId history is on each FindingRecord; the
+	// most recent revalidate history entry is the freshly written outcome.
+	bulk, berr := r.bulkRevalidateOutcomes(ctx)
+	if berr != nil {
+		return nil, fmt.Errorf("clawpatch revalidate: reduce bulk outcomes: %w", berr)
+	}
+	return bulk, nil
+}
+
+// bulkRevalidateOutcomes reads every finding file on disk and returns the
+// current (post-revalidate) status as a RevalidateOutcome list. Used by
+// Revalidate when --all or --since was passed; single-finding mode reads
+// the subprocess stdout directly.
+func (r *Runner) bulkRevalidateOutcomes(_ context.Context) ([]RevalidateOutcome, error) {
+	findings, err := r.ListFindings(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RevalidateOutcome, 0, len(findings))
+	for _, f := range findings {
+		// Pull the most recent revalidate history entry's reasoning; if
+		// none, leave reasoning blank.
+		var reasoning string
+		for i := len(f.History) - 1; i >= 0; i-- {
+			h := f.History[i]
+			if h.Kind != "revalidate" {
+				continue
+			}
+			if h.Reasoning != nil {
+				reasoning = *h.Reasoning
+			}
+			break
+		}
+		out = append(out, RevalidateOutcome{
+			Finding:   f.FindingID,
+			Outcome:   f.Status,
+			Reasoning: reasoning,
+		})
+	}
+	return out, nil
+}
+
+// Triage runs `clawpatch triage --finding <id> --status <status> --json`
+// so Tribunal can push its own triage decisions back to clawpatch's local
+// state. Used by `tribunal ledger triage` when a finding has a
+// ClawpatchID so the two stores stay aligned.
+func (r *Runner) Triage(ctx context.Context, findingID, status, note string) error {
+	if findingID == "" || status == "" {
+		return errors.New("clawpatch.Triage: findingID and status are required")
+	}
+	args := []string{"triage", "--finding", findingID, "--status", status}
+	if note != "" {
+		args = append(args, "--note", note)
+	}
+	out, code, err := r.run(ctx, args...)
+	if err != nil {
+		return fmt.Errorf("clawpatch triage failed (exit %d): %w\nstdout/stderr: %s", code, err, out.String())
+	}
+	return nil
+}
+
 // ListFindings reads every `.clawpatch/findings/<id>.json` under Cwd's
 // state dir and returns them. Order is filesystem order, which is stable
 // per filesystem but not lexicographic — callers that care should sort.

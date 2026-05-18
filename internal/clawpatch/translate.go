@@ -208,6 +208,70 @@ func FormatLensReport(lens Lens, planID string, findings []Finding) string {
 	return b.String()
 }
 
+// TriageFromClawpatch maps a clawpatch finding status (open|fixed|
+// false-positive|uncertain|wont-fix) into Tribunal's TriageStatus. The
+// two enums were intentionally aligned so this is mostly a passthrough.
+func TriageFromClawpatch(status string) ledger.TriageStatus {
+	switch strings.ToLower(status) {
+	case "open":
+		return ledger.TriageStatusOpen
+	case "fixed":
+		return ledger.TriageStatusFixed
+	case "false-positive":
+		return ledger.TriageStatusFalsePositive
+	case "wont-fix":
+		return ledger.TriageStatusWontFix
+	case "uncertain":
+		return ledger.TriageStatusUncertain
+	default:
+		return ledger.TriageStatusUncertain
+	}
+}
+
+// TriageToClawpatch is the inverse mapping — used when pushing Tribunal
+// triage decisions back to clawpatch via `clawpatch triage`. Returns
+// empty string for triage states clawpatch doesn't recognise
+// (in-progress, which clawpatch has no equivalent for; callers should
+// skip the push in that case).
+func TriageToClawpatch(s ledger.TriageStatus) string {
+	switch s {
+	case ledger.TriageStatusOpen:
+		return "open"
+	case ledger.TriageStatusFixed:
+		return "fixed"
+	case ledger.TriageStatusFalsePositive:
+		return "false-positive"
+	case ledger.TriageStatusWontFix:
+		return "wont-fix"
+	case ledger.TriageStatusUncertain:
+		return "uncertain"
+	default:
+		return ""
+	}
+}
+
+// FixStatusToTriage maps a clawpatch fix result.Status field
+// (planned|applied|failed|validated|abandoned) into a triage state for
+// the post-fix ledger entry. "applied" + clean exit means clawpatch ran
+// validation and it passed — we record that as fixed. "failed" means a
+// patch landed but validation didn't pass — we record open so the
+// finding stays actionable. Dry-runs use a sentinel "planned" status
+// and translate to in-progress.
+func FixStatusToTriage(s string) ledger.TriageStatus {
+	switch strings.ToLower(s) {
+	case "applied", "validated":
+		return ledger.TriageStatusFixed
+	case "failed":
+		return ledger.TriageStatusOpen
+	case "planned", "applying", "":
+		return ledger.TriageStatusInProgress
+	case "abandoned":
+		return ledger.TriageStatusUncertain
+	default:
+		return ledger.TriageStatusUncertain
+	}
+}
+
 // sanitizeID makes a clawpatch finding ID safe for use in a filesystem
 // path component. Clawpatch IDs are usually already path-safe but defense
 // in depth costs nothing here.

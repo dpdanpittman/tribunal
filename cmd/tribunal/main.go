@@ -36,6 +36,8 @@ func newRootCmd() *cobra.Command {
 		newVerifyCmd(),
 		newDispatchCmd(),
 		newChainCmd(),
+		newFixCmd(),
+		newRevalidateCmd(),
 	)
 	return cmd
 }

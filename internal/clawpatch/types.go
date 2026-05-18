@@ -110,3 +110,48 @@ type ReviewOpts struct {
 	// DryRun runs without invoking the provider. Useful for plumbing tests.
 	DryRun bool
 }
+
+// FixOpts are the flags Tribunal forwards to `clawpatch fix`.
+type FixOpts struct {
+	// Finding is the clawpatch finding ID to fix. Required.
+	Finding string
+	// DryRun runs the fix planner without applying a patch.
+	DryRun bool
+}
+
+// FixResult mirrors the JSON object emitted by `clawpatch fix --json`.
+// Fields are tagged with omitempty because the dry-run and live shapes
+// differ (dry-run carries plan + validation; live carries status +
+// filesChanged + changedFiles).
+type FixResult struct {
+	Finding      string `json:"finding"`
+	DryRun       bool   `json:"dryRun"`
+	PatchAttempt string `json:"patchAttempt"`
+	Plan         string `json:"plan,omitempty"`         // dry-run only
+	Status       string `json:"status,omitempty"`       // live: planned|applied|failed|validated
+	FilesChanged int    `json:"filesChanged,omitempty"` // live
+	ChangedFiles string `json:"changedFiles,omitempty"` // live
+	Commands     int    `json:"commands,omitempty"`     // live
+	Validation   string `json:"validation,omitempty"`   // both shapes
+	Next         string `json:"next,omitempty"`         // live
+}
+
+// RevalidateOpts are the flags Tribunal forwards to `clawpatch revalidate`.
+// At most one of Finding / All / Since should be set; the runner picks the
+// matching clawpatch invocation. If multiple are set, Finding wins, then
+// All, then Since.
+type RevalidateOpts struct {
+	Finding string
+	All     bool
+	Since   string
+	Limit   int
+}
+
+// RevalidateOutcome mirrors the per-finding result from
+// `clawpatch revalidate --json`. Both the single-finding and bulk shapes
+// reduce to this Go type — runner.Revalidate normalises both.
+type RevalidateOutcome struct {
+	Finding   string `json:"finding"`
+	Outcome   string `json:"outcome"`             // open|fixed|false-positive|uncertain|wont-fix
+	Reasoning string `json:"reasoning,omitempty"` // only present in single-finding mode
+}

@@ -183,3 +183,56 @@ func TestFormatLensReport_WithFindings(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestTriageFromClawpatch(t *testing.T) {
+	cases := map[string]ledger.TriageStatus{
+		"open":           ledger.TriageStatusOpen,
+		"fixed":          ledger.TriageStatusFixed,
+		"false-positive": ledger.TriageStatusFalsePositive,
+		"wont-fix":       ledger.TriageStatusWontFix,
+		"uncertain":      ledger.TriageStatusUncertain,
+		"FIXED":          ledger.TriageStatusFixed, // case-insensitive
+		"garbage":        ledger.TriageStatusUncertain,
+		"":               ledger.TriageStatusUncertain,
+	}
+	for in, want := range cases {
+		if got := clawpatch.TriageFromClawpatch(in); got != want {
+			t.Errorf("TriageFromClawpatch(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+func TestTriageToClawpatch(t *testing.T) {
+	cases := map[ledger.TriageStatus]string{
+		ledger.TriageStatusOpen:          "open",
+		ledger.TriageStatusFixed:         "fixed",
+		ledger.TriageStatusFalsePositive: "false-positive",
+		ledger.TriageStatusWontFix:       "wont-fix",
+		ledger.TriageStatusUncertain:     "uncertain",
+		// in-progress has no clawpatch equivalent — push must be skipped.
+		ledger.TriageStatusInProgress: "",
+	}
+	for in, want := range cases {
+		if got := clawpatch.TriageToClawpatch(in); got != want {
+			t.Errorf("TriageToClawpatch(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestFixStatusToTriage(t *testing.T) {
+	cases := map[string]ledger.TriageStatus{
+		"applied":   ledger.TriageStatusFixed,
+		"validated": ledger.TriageStatusFixed,
+		"failed":    ledger.TriageStatusOpen,
+		"planned":   ledger.TriageStatusInProgress,
+		"applying":  ledger.TriageStatusInProgress,
+		"":          ledger.TriageStatusInProgress,
+		"abandoned": ledger.TriageStatusUncertain,
+		"surprise":  ledger.TriageStatusUncertain,
+	}
+	for in, want := range cases {
+		if got := clawpatch.FixStatusToTriage(in); got != want {
+			t.Errorf("FixStatusToTriage(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
