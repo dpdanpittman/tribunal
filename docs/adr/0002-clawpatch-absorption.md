@@ -240,6 +240,48 @@ The three open questions at the top of the ADR were resolved in conversation 202
    - `--export-tribunal-ledger <path>` (skip the disk round-trip on ingest)
 5. Tighten `validate_id_field` in the CosmWasm contract to a printable-ASCII allowlist (defense-in-depth on the tribunal-site XSS fix shipped 2026-05-17 site/leaderboard.astro).
 
+## Phase 2 — implemented 2026-05-17
+
+All five sub-phases landed in one batch on `dpdanpittman/tribunal@main`:
+
+### 2a — Triage state machine (commit `a868649`)
+
+- New `KindTriage` ledger entry alongside `KindFinding` / `KindResolution`. Append-only — one event per state change, file-order reduction returns the latest.
+- New `TriageEvent` struct (`internal/ledger/triage.go`) with the six-state enum aligned with clawpatch (`open|in-progress|fixed|false-positive|wont-fix|uncertain`). Signed with the triager's keypair.
+- `ClawpatchID` field added to `Finding` (`json:"clawpatch_id,omitempty"`), populated by `clawpatch.ToTribunalFinding` so 2b's wrappers can round-trip state back to clawpatch.
+- `Ledger.AppendTriage` / `AllTriage` / `LatestTriageByFinding` — additive companions; `All()` keeps its two-value signature so the eight existing call sites stay backward-compatible.
+- `VerifyAll` now also verifies triage events.
+- `tribunal ledger triage <id> --status ... [--note] [--as] [--no-auto-register]` CLI subcommand. Default triager label `human-triager`, role `RoleQA`, auto-registered on first use.
+
+### 2b — Fix + revalidate wrappers (commit `f107c16`)
+
+- `internal/clawpatch/runner.go:Fix()` subprocess-wraps `clawpatch fix --json`. Tolerates exit 6 (validation-failed) — clawpatch still emits parseable JSON, the wrapper returns both the body and a wrapped error so the caller can act on the partial result.
+- `internal/clawpatch/runner.go:Revalidate()` handles both single-finding mode (parses stdout) and bulk mode (reduces post-run state from `.clawpatch/findings/*.json`).
+- `internal/clawpatch/runner.go:Triage()` push-back helper for keeping clawpatch's local state aligned with Tribunal's signed-ledger triage.
+- `translate.go` adds `TriageFromClawpatch` / `TriageToClawpatch` / `FixStatusToTriage` status maps.
+- `tribunal fix --finding <id> [--dry-run]` appends an in-progress triage event before the subprocess, then fixed/open/uncertain after, and mirrors the PatchAttempt JSON to `.tribunal/patches/<finding-id>.json` for the audit trail.
+- `tribunal revalidate --finding|--all|--since` writes one TriageEvent per outcome, skipping findings without a ClawpatchID.
+
+### 2c — Upstream clawpatch PRs
+
+- Fork: `openclaw/clawpatch` → `dpdanpittman/clawpatch`.
+- **PR #64 `feat(review): --prompt-file flag`** — https://github.com/openclaw/clawpatch/pull/64. Lets callers append guidance to the review prompt without forking the prompt builder. Unlocks lens-aware Tribunal reviews (one prompt per arch/sec/perf) instead of post-hoc `LensBucket(category)`.
+- **PR #65 `feat(review): --export-tribunal-ledger flag`** — https://github.com/openclaw/clawpatch/pull/65. Emits a single JSONL file in Tribunal's signed-ledger shape (minus signature; Tribunal signs on ingest). Skips the per-finding-file disk reads. Schema is documented inline at the helper.
+- Both PRs: opt-in only, no default behavior change, 463/463 tests passing on each branch. Independent — can land in either order.
+
+### 2d — Contract `validate_id_field` tightening (commit `4ad77dc`)
+
+- `contracts/tribunal-reputation/src/validate.rs` now rejects every byte outside `U+0020..=U+007E`. Subsumes the original "no pipe / no control character" rule and additionally rejects multibyte UTF-8 (Latin-1 supplement, emoji). Closes the on-chain leg of the leaderboard XSS surface — the frontend fix from 2026-05-17 escapes at render time, but every future frontend now starts from a printable-ASCII corpus.
+- Documented non-policy: HTML-like bytes (`<`, `>`, `&`, quotes) remain valid labels because Tribunal is not in the HTML-escaping business. The new `register_agent_rejects_html_injection_label` test pins that decision.
+- Tests: 4 new (3 reject cases + 1 documenting accept), all 19 contract integration tests passing.
+- Optimized wasm built (`artifacts/tribunal_reputation.wasm`, sha256 `1b87cb78...0095b5`, 268K). Redeploy is a fresh instantiate (no migrate entry point + deployed `--no-admin`); operator playbook staged at `~/.claude/redeploy-2026-05-17-contract-v2.md`. Requires `~/.tribunal/chain.yaml.contract_address` and `site/src/pages/leaderboard.astro:5` to be updated with the new address post-instantiate, plus a tribunal-site rebuild.
+
+## Closed — what this ADR delivered
+
+Tribunal absorbed clawpatch as the discovery layer with no schema change to clawpatch's append-only stores and no breaking change to Tribunal's ledger. The trust-vs-discovery split holds: Tribunal still owns identity, signing, adversary, convergence, settlement; clawpatch still owns mapping, per-feature review, fix-and-revalidate. The single new coupling — Tribunal-orchestrator signing clawpatch-sourced findings on ingest — was the smallest viable seam to make findings trust-equivalent across both pipelines.
+
+Future work (not blocking this ADR's close): Phase 2.5 — once both upstream PRs land, rewrite `RunClawpatchLens` to drive three lens-aware reviews using `--prompt-file` per pass and ingest via `--export-tribunal-ledger`. That replaces the `LensBucket(category)` post-hoc bucketing with lens-native classification.
+
 ## Original status (preserved for history)
 
 Sketch — pick up 2026-05-18 to:
