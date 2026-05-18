@@ -14,6 +14,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.5] — 2026-05-17
+
+The implementer-reputation release. v0.4.2 added the implementer; v0.4.3 added the verify gate; v0.4.5 closes the feedback loop. Implementers that ship patches passing verify accumulate reputation; implementers that ship patches failing verify (or failing `git apply --check`) lose stake. The local ledger captures the signal immediately; on-chain settlement happens via the existing `tribunal chain sync` path.
+
+### Added
+
+- **`converge.ReputationSink` interface** + `ImplementerOutcome` struct. The controller calls the sink after every implementer invocation with a structured outcome (patch hash, severities addressed, verify verdict). Decouples the converge package from the agent registry + ledger persistence so the controller stays embeddable.
+- **`ledgerReputationSink`** (in `cmd/tribunal/converge_reputation.go`) — production sink that:
+  - Auto-registers the implementer's keypair on first use (role=`implementer`).
+  - Auto-registers a system `convergence-verifier` keypair (role=`qa`) for signing auto-resolutions.
+  - Writes a synthetic `ledger.Finding` per authored patch with the implementer as agent + patch sha256 as claim_hash + severity drawn from the highest severity of the findings the patch addressed.
+  - Writes an auto-`ledger.Resolution` when the verify gate produced a verdict: `TruePositive` on pass, `FalsePositive` on fail. Resolver = `convergence-verifier`.
+- **`--no-implementer-reputation` CLI flag** to disable the feedback loop. On by default when `--implementer` is set.
+- **Controller emission points**: outcome emitted after each implementer exit branch (M2 no-verify, M3 verify-pass, M3 verify-fail, M3 gate-error). The verify-pass branch is the only one that records `TruePositive`; everything else lands `FalsePositive` or no resolution (depending on whether the outcome is terminal).
+
+### Semantics
+
+- **Refused outcomes are not reputation events.** When the implementer returns `Refused: true`, the controller skips the sink entirely — refusal is operator signal that the patch was outside the implementer's safe scope, not a sign of low quality.
+- **M2 outcomes (patch applied, no verify) file the Finding but no Resolution.** Settlement awaits the next round's verify gate OR manual operator action (PM/QA marking the finding TP/FP via `tribunal ledger ...`). This keeps the reputation math honest — only verified outcomes settle automatically.
+- **Apply-failure outcomes file a `FalsePositive`** even without a verify gate. A patch that fails `git apply --check` is by definition a worthless artifact; the implementer's claim was wrong before verify even got a chance to run.
+- **Sink errors are non-fatal.** A failing reputation write lands in the round's `PatchError` field but doesn't halt the loop — reputation is best-effort, not load-bearing.
+- **Severity selection**: the synthetic Finding's severity equals the highest severity of the findings the patch was authored to address. A critical-fix that ships clean accumulates more reputation than a warning-fix.
+
+### On-chain settlement
+
+v0.4.5 ships the LOCAL feedback layer. To settle implementer reputation on-chain:
+
+1. `tribunal chain register implementer-<model-id>` — register the implementer keypair (one-time per implementer).
+2. `tribunal chain register convergence-verifier` — register the system verifier (one-time per project).
+3. `tribunal chain sync` — flushes the ledger entries the controller wrote.
+
+The on-chain registration step is intentional in v0.4.5 — auto-registration would invoke `xiond` from inside the converge loop, which expands the failure surface (xiond not in path, key resolution races, gas pricing). The local feedback works end-to-end without it; on-chain settlement is an explicit operator step.
+
+### Tests
+
+- `TestReputation_M2NoVerifyEmitsFindingOnly` — implementer authors a patch in M2 mode (no verify gate); sink sees `VerifyRan=false`, `NeedsResolution()=false`. Local Finding lands; no auto-Resolution.
+- `TestReputation_M3VerifyPassEmitsTruePositive` — full M3 happy path; sink sees `IsTruePositive=true`; loop continues to clean rounds + converges.
+- `TestReputation_M3VerifyFailEmitsFalsePositive` — verify failed; sink sees `IsTruePositive=false` + the verify summary forwarded.
+- `TestReputation_RefusalEmitsNothing` — implementer refused; sink not invoked (refusal isn't a reputation event).
+- `TestReputation_SinkErrorRecordedNotFatal` — sink returns error; loop completes; error lands in round's `PatchError` field.
+
+### Internal API
+
+- `Controller.Reputation` field — non-nil sink enables feedback emission.
+- `Controller.emitImplementerOutcome(ctx, round, target)` — internal helper that builds the outcome from round state. Called from every implementer-bearing exit path.
+- `patchHash(path) string` — sha256 of the patch file body, formatted as `sha256:<64-hex>` for ledger compatibility.
+
+### What v0.4.5 does NOT ship
+
+- **Auto on-chain registration**. Operators still run `tribunal chain register` manually for the implementer + verifier keypairs before `tribunal chain sync` will accept the entries. Auto-registration is v0.4.6 scope.
+- **Stake math for implementer findings.** The synthetic Finding uses the severity's default stake (same as a regular adversary finding); ADR-0001 hinted at a separate stake schedule for implementers (proportional to findings-addressed). Deferred.
+- **Implementer leaderboard view.** The current leaderboard lumps all roles together; a per-role split (adversaries vs implementers vs reviewers) is a separate site-side feature.
+- **PM-driven manual resolution of M2 outcomes.** The ledger entries are visible but `tribunal ledger resolve <finding-id> --outcome true_positive` needs explicit operator action. A `--auto-resolve` flag on `tribunal ledger` for IMPL-prefixed findings might land in v0.4.6.
+
 ## [0.4.4] — 2026-05-17
 
 The property-based testing release. The multi-adversary synthesis recommended PBT as "the most likely primitive to find what no adversary articulates" — the v0.4.x line has been deferring it since v0.4.0. v0.4.4 wires `pgregory.net/rapid` into the verification pyramid and ships 12 properties across 4 packages.

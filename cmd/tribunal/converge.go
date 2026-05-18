@@ -33,6 +33,7 @@ func newConvergeCmd() *cobra.Command {
 		implementerModel string
 		autoApply        bool
 		autoContinue     bool
+		noImplementerRep bool
 	)
 	cmd := &cobra.Command{
 		Use:   "converge",
@@ -138,6 +139,16 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 					MaxTokens:   8192,
 					LabelStr:    "implementer-" + implementerModel,
 				}
+				// v0.4.5 reputation feedback: implementer outcomes flow
+				// into the ledger so the leaderboard learns which
+				// implementers ship working patches. Opt out via
+				// --no-implementer-reputation.
+				if !noImplementerRep {
+					ctrl.Reputation = &ledgerReputationSink{
+						ProjectRoot: cwd,
+						Registry:    agentReg,
+					}
+				}
 			} else if autoApply {
 				return fmt.Errorf("--auto-apply requires --implementer (nothing to apply)")
 			}
@@ -189,6 +200,7 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 	cmd.Flags().StringVar(&implementerModel, "implementer", "", "Claude model id to author patches between rounds (e.g. claude-opus-4-7). Empty disables the implementer (M1 output-only).")
 	cmd.Flags().BoolVar(&autoApply, "auto-apply", false, "Apply the implementer's patch via `git apply` after authoring. Requires --implementer; refuses on a dirty working tree.")
 	cmd.Flags().BoolVar(&autoContinue, "auto-continue", false, "M3 auto-continue: after --auto-apply, run the verification pyramid; on pass continue the loop, on fail revert + exit. Requires --auto-apply (and therefore --implementer).")
+	cmd.Flags().BoolVar(&noImplementerRep, "no-implementer-reputation", false, "Disable the v0.4.5 implementer-reputation feedback (synthetic Finding + auto-Resolution written to .tribunal/ledger.jsonl per patch). On by default when --implementer is set.")
 	return cmd
 }
 

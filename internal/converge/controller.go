@@ -2,6 +2,7 @@ package converge
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -103,6 +104,13 @@ type Controller struct {
 	// DiffLoader is an optional hook the CLI wires to expand DiffSpec
 	// into the actual diff text. Nil → empty diff.
 	DiffLoader func(target ConvergenceTarget) string
+
+	// Reputation is the implementer-feedback sink. When non-nil, the
+	// controller calls it after every invokeImplementer with a
+	// structured ImplementerOutcome; the sink decides what (if anything)
+	// to record in the reputation ledger. v0.4.5 ships a LedgerReputationSink
+	// in cmd/tribunal that writes synthetic Findings + auto-Resolutions.
+	Reputation ReputationSink
 }
 
 // Run drives the convergence loop. Each round: rotate the panel, dispatch
@@ -281,6 +289,7 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 					_ = RevertWorkingTree(ctx, target.ProjectRoot)
 					final.Reverted = true
 					final.VerifySummary = "gate error: " + err.Error()
+					c.emitImplementerOutcome(ctx, &final, target)
 					history[len(history)-1] = final
 					_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
 					result.Rounds[len(result.Rounds)-1] = final
@@ -291,6 +300,7 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 				final.VerifyPassed = vr.Passed
 				final.VerifySummary = vr.Summary
 				if vr.Passed {
+					c.emitImplementerOutcome(ctx, &final, target)
 					history[len(history)-1] = final
 					_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
 					result.Rounds[len(result.Rounds)-1] = final
@@ -301,6 +311,7 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 				// Verify failed — revert and pause.
 				_ = RevertWorkingTree(ctx, target.ProjectRoot)
 				final.Reverted = true
+				c.emitImplementerOutcome(ctx, &final, target)
 				history[len(history)-1] = final
 				_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
 				result.Rounds[len(result.Rounds)-1] = final
@@ -309,7 +320,12 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 				return result, nil
 			}
 
-			// M1/M2 path: exit and wait for operator.
+			// M1/M2 path: emit the outcome before exiting (no verify,
+			// settlement awaits manual operator action).
+			c.emitImplementerOutcome(ctx, &final, target)
+			history[len(history)-1] = final
+			_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
+			result.Rounds[len(result.Rounds)-1] = final
 			result.Status = StatusNeedsFixes
 			result.Reason = fmt.Sprintf("round %d produced %d critical + %d warning finding(s); operator action required",
 				roundNum, countSeverity(final, "critical"), countSeverity(final, "warning"))
@@ -343,6 +359,70 @@ func countSeverity(r RoundResult, want string) int {
 		}
 	}
 	return n
+}
+
+// emitImplementerOutcome builds an ImplementerOutcome from the round
+// state and dispatches it to the configured ReputationSink. No-op when
+// the sink is nil or the round didn't author a patch (refused / not
+// invoked). Errors are recorded on the round via PatchError but don't
+// halt the loop — reputation feedback is best-effort.
+func (c *Controller) emitImplementerOutcome(ctx context.Context, round *RoundResult, target ConvergenceTarget) {
+	if c.Reputation == nil {
+		return
+	}
+	// Nothing happened that's worth recording — implementer wasn't
+	// invoked, or it refused to author a patch.
+	if !round.PatchAuthored && !round.PatchRefused && round.PatchError == "" {
+		return
+	}
+	if round.PatchRefused {
+		// Refusal isn't a reputation event; the implementer chose not
+		// to act. Operator sees the readme on disk.
+		return
+	}
+	severities := make([]string, 0, len(round.Findings))
+	for _, f := range round.Findings {
+		s := strings.ToLower(f.Severity)
+		if s == "critical" || s == "warning" {
+			severities = append(severities, s)
+		}
+	}
+	outcome := ImplementerOutcome{
+		PlanID:           target.PlanID,
+		Round:            round.Round,
+		ImplementerLabel: c.Implementer.Label(),
+		PatchHash:        patchHash(round.PatchPath),
+		Severities:       severities,
+		Refused:          round.PatchRefused,
+		Applied:          round.PatchApplied,
+		VerifyRan:        round.VerifyRan,
+		VerifyPassed:     round.VerifyPassed,
+		VerifySummary:    round.VerifySummary,
+		PatchError:       round.PatchError,
+	}
+	if err := c.Reputation.RecordImplementerOutcome(ctx, outcome); err != nil {
+		// Append to PatchError but don't overwrite — the apply/verify
+		// error is more useful to the operator than the sink error.
+		if round.PatchError == "" {
+			round.PatchError = "reputation sink: " + err.Error()
+		} else {
+			round.PatchError = round.PatchError + " (reputation sink: " + err.Error() + ")"
+		}
+	}
+}
+
+// patchHash returns sha256 of the file at patchPath as
+// "sha256:<64-hex>", or empty when the file is missing / unreadable.
+func patchHash(patchPath string) string {
+	if patchPath == "" {
+		return ""
+	}
+	body, err := os.ReadFile(patchPath)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return fmt.Sprintf("sha256:%x", sum)
 }
 
 // invokeImplementer asks the configured Implementer for a patch
