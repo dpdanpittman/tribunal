@@ -135,7 +135,7 @@ Runs after review survives the adversary. Each property is routed to the cheapes
 For **Go** (the reference stack):
 
 ```
-go test (fuzz + property)        ← gopter, native fuzz, behavioral sweeps
+go test (fuzz + property)        ← pgregory.net/rapid, native fuzz, behavioral sweeps
 go test (unit + integration)     ← deterministic coverage
 golangci-lint                    ← combined linter pass
 staticcheck                      ← deeper static analysis

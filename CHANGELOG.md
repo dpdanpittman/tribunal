@@ -14,6 +14,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.4] — 2026-05-17
+
+The property-based testing release. The multi-adversary synthesis recommended PBT as "the most likely primitive to find what no adversary articulates" — the v0.4.x line has been deferring it since v0.4.0. v0.4.4 wires `pgregory.net/rapid` into the verification pyramid and ships 12 properties across 4 packages.
+
+### Added
+
+- **`pgregory.net/rapid` v1.3.0** as a runtime test dependency. Modern Go PBT library with automatic shrinking; properties live in `*_pbt_test.go` files and run under the existing `go test ./...` (no new build target needed — they're picked up by the `go-test` layer of the verification pyramid).
+- **12 property tests across 4 packages**, covering the invariants the v0.3.x / v0.4.x releases established:
+  - **`internal/ledger`** — 3 properties (signature roundtrip, tamper-detection, canonical-payload determinism). The cryptographic primitive at the heart of every signed Finding; tamper-detection runs 1000+ random Finding shapes through Sign → mutate any field → Verify-must-fail.
+  - **`internal/chain`** — 2 properties (commit + resolution chunking invariants). Concatenation correctness, ≤MAX_BATCH_SIZE per chunk, exact-max-except-last shape, and the ceil(N/100) count rule. Pins v0.3.5's F-OPUS-003 fix across the full input space.
+  - **`internal/converge`** — 3 properties (ConsecutiveCleanCriterion biconditional, MaxRoundsCriterion threshold, NoNovelFindings carry-forward logic). Each criterion has a reference implementation in the test file; rapid drives random histories through the production criterion + the oracle and asserts they agree on every input.
+  - **`internal/dispatch`** — 3 properties (BucketByModelTier purity + known-tier classification + BucketByVendorFamily fixed-map). The v0.4.0 intra-Claude reshape depends on opus/sonnet/haiku each occupying distinct model_tier buckets; the PBT pins that across any input.
+
+### Methodology
+
+- The methodology has had PBT in the verification pyramid as a documented layer since v0.1 — `_pbt_test.go` files now make it real for the first time. Tests run as standard Go tests under the existing `go-test` pyramid layer; no special invocation needed.
+- See `docs/methodology.md` "verification pyramid" section for guidance on when to write a PBT vs. an example-based test. Short version: PBT when the property is a cross-input invariant (every signed payload verifies; every chunking output reassembles; every panel rotation preserves member count); example-based test when the property is a specific scenario (a hostile LCD claims X under conditions Y).
+
+### What v0.4.4 does NOT ship
+
+- **PBT against the Rust contract surface** — `contracts/tribunal-reputation/src/validate.rs` has the most interesting input-space invariants (printable-ASCII enforcement, length bounds, character class). `proptest`-driven PBT for the Rust side is a separate v0.5.x scope.
+- **Stateful PBT** — rapid supports state-machine-style PBT (random sequences of operations against a system). Tribunal's ledger + chain layer would benefit from this; deferred.
+- **Implementer reputation feedback** — the remaining open item from the v0.4.x line. Targeting v0.4.5.
+
 ## [0.4.3] — 2026-05-17
 
 The auto-continue release. v0.4.1 shipped the convergence loop (M1); v0.4.2 added the implementer (M2); v0.4.3 closes ADR-0001 with M3 — the loop can now self-drive end-to-end with a verify gate and revert-on-failure safety. The "ship at convergence, not on a schedule" methodology promise from v0.3.4 finally compiles.
