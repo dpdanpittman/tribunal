@@ -1,7 +1,7 @@
 # ADR-0001: Convergence Controller
 
-**Status:** Implemented — M1 in v0.4.1 + M2 in v0.4.2 (both 2026-05-17); M3 still scheduled.
-**Date:** 2026-05-13 (proposed) → 2026-05-17 (M1 + M2 shipped)
+**Status:** Implemented — M1 (v0.4.1) + M2 (v0.4.2) + M3 (v0.4.3), all 2026-05-17.
+**Date:** 2026-05-13 (proposed) → 2026-05-17 (M1 + M2 + M3 shipped)
 **Driver:** P-v033-audit, F-NEW-403 — observed three audit cycles producing structurally-similar defects without converging.
 
 ## Context
@@ -82,9 +82,11 @@ Flags:
 
 Define `Implementer` and provide a Claude implementation: given findings + diff + intent, returns a patch. The controller can be invoked with `--implementer=claude-opus-4-7` to delegate fix authoring to an LLM. Patches are presented for human approval by default; `--auto-apply` skips approval.
 
-**M3 — Auto-apply (later)**
+**M3 — Auto-apply + auto-continue (shipped v0.4.3 at 2026-05-17)**
 
-The most dangerous regime. Controller runs the loop end-to-end without human intervention: dispatch, review, patch, apply, re-dispatch, until convergence or budget. Bounded by all the budget flags from M1. Only ships after M2 has been validated empirically on at least three real convergence cycles.
+Controller runs the loop end-to-end: dispatch, review, patch, apply, **verify**, re-dispatch, until convergence or budget. Safety added during implementation: a configurable `VerifyGate` (default = the full `tribunal verify` pyramid) gates whether the loop continues after each apply, and `RevertWorkingTree` restores the pre-patch state on failure so the operator inherits a clean tree. Requires an explicit `--auto-continue` flag in addition to `--auto-apply` — both opt-ins must be present.
+
+Bounded by all the budget flags from M1. The originally-planned "ships last with extensive testing" guidance is honored by the verify gate (independent confirmation that the patch didn't break the build/tests) + the unchanged round / token / wallclock caps.
 
 ### Panel rotation strategies
 

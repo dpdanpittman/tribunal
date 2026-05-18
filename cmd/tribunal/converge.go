@@ -32,6 +32,7 @@ func newConvergeCmd() *cobra.Command {
 		noAutoRegister   bool
 		implementerModel string
 		autoApply        bool
+		autoContinue     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "converge",
@@ -114,9 +115,16 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 				},
 				DispatchConfig:    cfg,
 				AutoApply:         autoApply,
+				AutoContinue:      autoContinue,
 				IntentLoader:      intentLoaderForCWD(cwd),
 				DiffLoader:        diffLoaderForCWD(cwd, diffSpec),
 				FindingBodyLookup: findingBodyLookupForCWD(cwd),
+			}
+			if autoContinue {
+				if !autoApply {
+					return fmt.Errorf("--auto-continue requires --auto-apply (nothing to verify against)")
+				}
+				ctrl.VerifyGate = &converge.PyramidVerifyGate{}
 			}
 			if implementerModel != "" {
 				claude, err := dispatch.NewClaudeProvider()
@@ -180,6 +188,7 @@ See docs/convergence.md and docs/adr/0001-convergence-controller.md.`,
 	cmd.Flags().BoolVar(&noAutoRegister, "no-auto-register", false, "Refuse to auto-create adversary agent keypairs")
 	cmd.Flags().StringVar(&implementerModel, "implementer", "", "Claude model id to author patches between rounds (e.g. claude-opus-4-7). Empty disables the implementer (M1 output-only).")
 	cmd.Flags().BoolVar(&autoApply, "auto-apply", false, "Apply the implementer's patch via `git apply` after authoring. Requires --implementer; refuses on a dirty working tree.")
+	cmd.Flags().BoolVar(&autoContinue, "auto-continue", false, "M3 auto-continue: after --auto-apply, run the verification pyramid; on pass continue the loop, on fail revert + exit. Requires --auto-apply (and therefore --implementer).")
 	return cmd
 }
 

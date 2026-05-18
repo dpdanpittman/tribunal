@@ -93,6 +93,16 @@ type RoundResult struct {
 	PatchFiles    []string `json:"patch_files,omitempty"`
 	PatchTokens   int      `json:"patch_tokens,omitempty"`
 	PatchError    string   `json:"patch_error,omitempty"`
+
+	// Verify fields are populated by the M3 auto-continue flow when the
+	// controller's VerifyGate runs after a patch lands.
+	VerifyRan     bool   `json:"verify_ran,omitempty"`
+	VerifyPassed  bool   `json:"verify_passed,omitempty"`
+	VerifySummary string `json:"verify_summary,omitempty"`
+
+	// Reverted is true when the controller called RevertWorkingTree
+	// after a failed verify; pairs with VerifyPassed=false.
+	Reverted bool `json:"reverted,omitempty"`
 }
 
 // RoundFinding is the controller's view of one finding — a normalized

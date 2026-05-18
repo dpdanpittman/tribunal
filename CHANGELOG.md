@@ -14,6 +14,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.3] — 2026-05-17
+
+The auto-continue release. v0.4.1 shipped the convergence loop (M1); v0.4.2 added the implementer (M2); v0.4.3 closes ADR-0001 with M3 — the loop can now self-drive end-to-end with a verify gate and revert-on-failure safety. The "ship at convergence, not on a schedule" methodology promise from v0.3.4 finally compiles.
+
+### Added
+
+- **`VerifyGate` interface** + `PyramidVerifyGate` adapter in `internal/converge/`. After an implementer patch lands, the M3 path calls `Verify(ctx, projectRoot)` and routes the verdict back into the controller's loop decision. `PyramidVerifyGate` delegates to `internal/verify.Run` so it reuses the same layers as `tribunal verify` (go-build, go-fmt, go-vet, go-test, plus any operator-configured extras).
+- **`RevertWorkingTree(ctx, projectRoot)`** — `git reset --hard HEAD` + `git clean -fd`. Called when the verify gate fails so the operator inherits a clean tree instead of a half-broken patch. Safe under the M3 precondition (ApplyPatch ran from a clean tree, so reset reverts exactly the patch and nothing else).
+- **`Controller.AutoContinue` field + `--auto-continue` CLI flag.** Requires `--auto-apply` (CLI-enforced; the library is permissive). When set, the controller runs the verify gate after each implementer apply; on pass it `continue`s the loop iteration instead of exiting `StatusNeedsFixes`. The loop terminates the same way it always has — converged when a stopping criterion fires, budget-exhausted when the budget bounds hit.
+- **`RoundResult` extension**: `VerifyRan`, `VerifyPassed`, `VerifySummary`, `Reverted` fields on the persisted round JSON. `omitempty` so old rounds decode unchanged.
+
+### Changed
+
+- **`workingTreeClean` now ignores `.tribunal/` paths.** The controller writes round ledgers, patch artifacts, and signed findings to `.tribunal/` during the same flow that invokes ApplyPatch — those writes don't represent operator pending changes and shouldn't block the apply. Modifications outside `.tribunal/` still refuse as in v0.4.2.
+
+### Semantics
+
+- **M3 trigger**: `AutoApply` true AND `AutoContinue` true AND `VerifyGate` non-nil AND the just-completed round actually applied a patch (`PatchApplied == true`). Any of these false → fall through to the M2 path (exit `StatusNeedsFixes`).
+- **Verify pass**: the round records `VerifyRan + VerifyPassed`; the working tree stays modified; the loop continues to the next round. The next round's preflight sees the patched tree as the new baseline.
+- **Verify fail OR gate error**: the controller calls `RevertWorkingTree`, records `Reverted + VerifySummary`, exits `StatusNeedsFixes` with the verify summary surfaced in the result reason. Operator inspects, fixes manually, re-invokes.
+- **Budget bounds still apply unchanged**: every round (apply or not) increments the round count and adds to the cumulative token cost. M3 doesn't bypass `MaxRounds` / `MaxTokens` / `MaxWallclock` — auto-continue just lets one invocation cover more of the budget.
+
+### Tests
+
+- `TestM3_VerifyPassContinuesLoop` — happy path; round 1 patches + verify passes; rounds 2-3 are clean and `consecutive-clean(2)` converges. File ends at the patched state.
+- `TestM3_VerifyFailRevertsAndExits` — patch lands but verify fails; controller reverts; `StatusNeedsFixes` returned with the verify summary in `Reason`. File ends at the pre-patch state.
+- `TestM3_VerifyGateErrorReverts` — gate itself errors (not just a failing verdict); still triggers revert + exit.
+- `TestM3_RequiresAutoApply` — `AutoContinue=true` with `AutoApply=false` falls through to M2; verify gate is not consulted.
+- `TestRevertWorkingTree` — direct unit test of the helper: modified tracked file restored, untracked file removed.
+
+### Usage
+
+```
+# Full M3 loop:
+tribunal converge --plan P-42 --implementer claude-opus-4-7 --auto-apply --auto-continue
+
+# Still-supported earlier modes:
+tribunal converge --plan P-42                                         # M1 output-only
+tribunal converge --plan P-42 --implementer claude-opus-4-7           # M2 patch authored, presented for review
+tribunal converge --plan P-42 --implementer claude-opus-4-7 --auto-apply
+                                                                      # M2 patch authored + applied, no continue
+```
+
+### ADR-0001
+
+Promoted: M1 + M2 + M3 all implemented. The "ships last with extensive testing" guidance in the ADR is honored by (a) `--auto-continue` requiring an explicit operator opt-in over both `--implementer` and `--auto-apply`, (b) the verify-gate + revert-on-fail safety, and (c) the unchanged budget caps that still bound the loop end-to-end.
+
 ## [0.4.2] — 2026-05-17
 
 The implementer release. v0.4.1 shipped the convergence loop without fix authoring; v0.4.2 ships ADR-0001 milestone M2 — a pluggable Implementer that drafts a patch between rounds.

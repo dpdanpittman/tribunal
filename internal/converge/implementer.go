@@ -116,12 +116,54 @@ func ApplyPatch(ctx context.Context, projectRoot, patch string) ([]string, error
 	return files, nil
 }
 
+// RevertWorkingTree undoes a freshly-applied implementer patch by
+// resetting tracked files to HEAD and removing untracked files. Safe
+// to call only when ApplyPatch was the last mutation against a
+// previously-clean tree — that's the M3 auto-continue precondition:
+// ApplyPatch refused to run unless the tree was clean, so reset --hard
+// HEAD + clean -fd reverts the patch and nothing else.
+//
+// The two-step command (reset + clean) is necessary because reset
+// --hard doesn't touch untracked files; a patch that added new files
+// would leave them behind otherwise.
+func RevertWorkingTree(ctx context.Context, projectRoot string) error {
+	if _, err := runGitCtx(ctx, projectRoot, "reset", "--hard", "HEAD"); err != nil {
+		return fmt.Errorf("RevertWorkingTree: reset --hard: %w", err)
+	}
+	if _, err := runGitCtx(ctx, projectRoot, "clean", "-fd"); err != nil {
+		return fmt.Errorf("RevertWorkingTree: clean -fd: %w", err)
+	}
+	return nil
+}
+
+// workingTreeClean reports clean if every git-status line outside the
+// `.tribunal/` directory is empty. The tool's own state directory is
+// allowed to be dirty — the controller writes round ledgers, patch
+// artifacts, and signed findings there during the very same flow that
+// invokes ApplyPatch. Operator modifications outside `.tribunal/`
+// still block apply.
 func workingTreeClean(ctx context.Context, projectRoot string) (bool, error) {
 	out, err := runGitCtx(ctx, projectRoot, "status", "--porcelain")
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(out) == "", nil
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			continue
+		}
+		// Porcelain format: first two columns are status, then a space,
+		// then the path. Skip lines whose path starts with `.tribunal/`.
+		if len(line) <= 3 {
+			return false, nil
+		}
+		path := strings.TrimSpace(line[2:])
+		if strings.HasPrefix(path, ".tribunal/") || path == ".tribunal" {
+			continue
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 func writeTempPatch(projectRoot, patch string) (string, error) {

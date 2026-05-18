@@ -78,6 +78,19 @@ type Controller struct {
 	// to also run `git apply` against the working tree.
 	AutoApply bool
 
+	// AutoContinue (M3) extends AutoApply: after a patch lands, the
+	// controller runs VerifyGate.Verify; if it passes, the loop
+	// continues to the next round in the same invocation. If it
+	// fails, the controller calls RevertWorkingTree and exits
+	// StatusNeedsFixes with the verify summary. Requires both
+	// AutoApply=true and VerifyGate non-nil — the CLI enforces both.
+	AutoContinue bool
+
+	// VerifyGate is the "did the patch break the build/tests" check
+	// the M3 path consults after each implementer apply. Nil disables
+	// the gate (AutoContinue is then a no-op).
+	VerifyGate VerifyGate
+
 	// FindingBodyLookup is an optional hook the CLI wires to resolve
 	// finding.ClaimURI → file body so the implementer prompt can
 	// include the full per-finding markdown. Nil → empty bodies.
@@ -246,16 +259,57 @@ func (c *Controller) Run(ctx context.Context, target ConvergenceTarget) (*Conver
 		// findings? If so, the loop pauses for operator action. If an
 		// Implementer is configured (M2), invoke it to author a patch
 		// before exiting — operators get a tangible artifact to review
-		// or apply instead of just a finding list.
+		// or apply instead of just a finding list. If M3 is enabled
+		// (AutoApply + AutoContinue + VerifyGate), the controller may
+		// continue the loop after a verified patch instead of pausing.
 		if needsFixes(final) {
 			if c.Implementer != nil {
 				c.invokeImplementer(ctx, &final, target)
-				// Persist the round again so the patch fields are on disk.
 				history[len(history)-1] = final
 				_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
-				// Refresh result.Rounds tail.
 				result.Rounds[len(result.Rounds)-1] = final
 			}
+
+			// M3 auto-continue: the patch applied cleanly; run the verify
+			// gate. Pass → continue loop. Fail → revert + exit.
+			if c.AutoApply && c.AutoContinue && c.VerifyGate != nil && final.PatchApplied {
+				vr, err := c.VerifyGate.Verify(ctx, target.ProjectRoot)
+				final.VerifyRan = true
+				if err != nil {
+					// Gate itself errored — revert and exit so operator
+					// debugs the gate (not a verify failure per se).
+					_ = RevertWorkingTree(ctx, target.ProjectRoot)
+					final.Reverted = true
+					final.VerifySummary = "gate error: " + err.Error()
+					history[len(history)-1] = final
+					_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
+					result.Rounds[len(result.Rounds)-1] = final
+					result.Status = StatusNeedsFixes
+					result.Reason = fmt.Sprintf("round %d: verify gate errored (working tree reverted): %v", roundNum, err)
+					return result, nil
+				}
+				final.VerifyPassed = vr.Passed
+				final.VerifySummary = vr.Summary
+				if vr.Passed {
+					history[len(history)-1] = final
+					_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
+					result.Rounds[len(result.Rounds)-1] = final
+					// Continue the loop — next iteration will dispatch the
+					// next round against the post-patch working tree.
+					continue
+				}
+				// Verify failed — revert and pause.
+				_ = RevertWorkingTree(ctx, target.ProjectRoot)
+				final.Reverted = true
+				history[len(history)-1] = final
+				_, _ = SaveRound(target.ProjectRoot, target.PlanID, &final)
+				result.Rounds[len(result.Rounds)-1] = final
+				result.Status = StatusNeedsFixes
+				result.Reason = fmt.Sprintf("round %d: verify gate failed (working tree reverted) — %s", roundNum, vr.Summary)
+				return result, nil
+			}
+
+			// M1/M2 path: exit and wait for operator.
 			result.Status = StatusNeedsFixes
 			result.Reason = fmt.Sprintf("round %d produced %d critical + %d warning finding(s); operator action required",
 				roundNum, countSeverity(final, "critical"), countSeverity(final, "warning"))
