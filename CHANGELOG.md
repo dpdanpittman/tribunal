@@ -14,6 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.3.5] — 2026-05-17
+
+Audit-driven fix release. P-multi-adversary's four-adversary panel (claude-opus, claude-sonnet, qwen3-coder, deepseek-r1) refuted H1 (cross-family additive diversity) but confirmed H2 (intra-family disagreement is real) — and surfaced six novel opus findings whose blast radius extended past what the lens reviewers caught. F-OPUS-004 (`looksLikeTestChain` Unicode bypass) shipped at e035a4f. v0.3.5 closes the remaining four — F-OPUS-001 / 002 / 003 / 005 — plus addresses F-OPUS-006 transitively via the F-OPUS-001 success-path fix. No contract changes; no migration. Audit reports: `.tribunal/reports/P-multi-adversary/SYNTHESIS.md` and `.tribunal/reports/P-v035-followup/`.
+
+### Fixed
+
+- **Hostile-LCD defense on the success-path preflight.** `preflight()` now returns the full `FindingState` / `ResolutionRecord` per id instead of opaque booleans. Both call sites — the success path in `SyncPlan` and the recovery loop in `submit{Commit,Resolve}Batch` — verify that the on-chain `claim_hash`, `agent_pubkey`, `severity`, and `stake` (or `evidence_hash`, `outcome`, `resolver_pubkey` on the resolution side) match the local copy before treating an entry as already-committed. A hostile LCD that fabricates a "this finding is already committed" response under a different payload is caught at `verifyOnChainCommit` and surfaced as a `preflight conflict` error; v0.3.4's recovery-path defense ([F-SEC-401]) is now mirrored on the success path. ([F-OPUS-001], [F-OPUS-006])
+- **Client-side batch chunking against contract `MAX_BATCH_SIZE = 100`.** `submitCommitBatch` and `submitResolveBatch` now split inputs through `chunkFindingCommits` / `chunkResolutionCommits` before invoking the per-chunk recovery loop. Plans with >100 findings used to hit `BatchTooLarge` on every attempt and the structured-query recovery couldn't help (preflight returned no committed entries for fresh ones, so the loop bailed immediately). On partial chunk failure the function returns the chunks that did land so the operator sees what landed before seeing what failed. ([F-OPUS-003])
+- **Outer sync ctx scales with plan count.** `cmd/tribunal/chain.go`'s 5-minute outer ctx silently truncated plans 4+ once their cumulative per-plan budget exceeded the fixed bound. New `chain.SyncBudgetForPlans(n)` returns `max(5m, n × perPlanSyncBudget × 1.2)`, and the CLI reads the ledger first to size the budget against the actual plan count. ([F-OPUS-002])
+- **Recovery exhaustion error names remaining findings + last contract error.** v0.3.4's terminal error read `commit batch exhausted recovery attempts (cap=5)`, which gave the operator no information about which findings still needed to settle or why the contract was rejecting them. v0.3.5 includes the remaining finding IDs and wraps the last broadcast error: `commit batch exhausted recovery attempts (cap=5, remaining=2 [F-3 F-7]): last_error=...`. Symmetric on the resolve side. ([F-OPUS-005])
+
+### Tests
+
+- New `TestVerifyOnChainCommit_MatchAndMismatch` / `TestVerifyOnChainResolution_MatchAndMismatch` pin the F-OPUS-001 verification helpers across matching state plus one-field-mismatch cases per field.
+- New `TestChunkFindingCommits` / `TestChunkResolutionCommits` pin the F-OPUS-003 chunking helper at 0 / 1 / 100 / 101 / 200 / 250 / 235 entries.
+- New `TestSyncBudgetForPlans_Scales` pins the F-OPUS-002 helper at n=0,1,4,10,20.
+
+### Internal
+
+- `preflight()` signature change: returns `(committed map[string]*FindingState, resolved map[string]*ResolutionRecord)`. All three call sites updated. Public API surface unchanged.
+- `submitCommitBatch` / `submitResolveBatch` split into a chunking outer (`submit{Commit,Resolve}Batch`) and a per-chunk inner (`submit{Commit,Resolve}Chunk`); the inner loop is what v0.3.4's outer was.
+- New imports in `internal/chain/sync.go`: `strconv` (for stake comparison), `strings` (for chunk hash concat).
+
 ## [0.3.4] — 2026-05-14
 
 Audit-driven fix release. P-v033-audit's adversary identified that the methodology was not converging on a fixed point — each fix was a more precise version of the same primitive (parse-the-LCD's-error-string), narrower than the contract's true error grammar. v0.3.4 changes the primitive, not the regex. No contract changes; no migration. Audit report: `.tribunal/reports/P-v033-audit/SYNTHESIS.md`.

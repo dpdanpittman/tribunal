@@ -198,14 +198,18 @@ for the plan are drained into the same transaction.`,
 				Keys:   chain.NewRegistryResolver(reg),
 				Queue:  chain.NewQueue(qpath),
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
 
+			// v0.3.5 / F-OPUS-002: outer ctx scales with the number of
+			// plans that will be synced so plans 4+ aren't truncated by a
+			// fixed 5-minute outer bound. Read the ledger first to count
+			// distinct plans, then size the budget.
+			findings, resolutions, err := lg.All()
+			if err != nil {
+				return err
+			}
 			if planID != "" {
-				findings, resolutions, err := lg.All()
-				if err != nil {
-					return err
-				}
+				ctx, cancel := context.WithTimeout(context.Background(), chain.SyncBudgetForPlans(1))
+				defer cancel()
 				res, err := sync.SyncPlan(ctx, planID, findings, resolutions)
 				if err != nil {
 					return err
@@ -213,6 +217,16 @@ for the plan are drained into the same transaction.`,
 				printSyncResult(res)
 				return nil
 			}
+
+			planSet := map[string]struct{}{}
+			for _, f := range findings {
+				planSet[f.PlanID] = struct{}{}
+			}
+			for _, r := range resolutions {
+				planSet[r.PlanID] = struct{}{}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), chain.SyncBudgetForPlans(len(planSet)))
+			defer cancel()
 
 			// v0.3.4 / P-v033-audit F-ARCH-303: SyncAll's `errors.Join`
 			// aggregation produces partial results even on error. Render

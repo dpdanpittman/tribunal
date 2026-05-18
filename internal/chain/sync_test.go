@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dpdanpittman/tribunal/internal/agent"
 	"github.com/dpdanpittman/tribunal/internal/ledger"
@@ -246,5 +247,168 @@ func TestSync_BuildsCommitsFromLedger(t *testing.T) {
 	}
 	if len(resCommits) != 1 {
 		t.Fatalf("resolutions: got %d, want 1", len(resCommits))
+	}
+}
+
+// TestVerifyOnChainCommit_MatchAndMismatch pins the F-OPUS-001 defense:
+// a hostile LCD that reports a finding as committed under a *different*
+// claim_hash / agent_pubkey / severity / stake must be caught before the
+// caller silently drops the finding from sync. A matching on-chain state
+// is the only case that returns nil.
+func TestVerifyOnChainCommit_MatchAndMismatch(t *testing.T) {
+	adv := kpFromSeed(t, 0xA1)
+	f := &ledger.Finding{
+		FindingID:   "F-1",
+		PlanID:      "P-A",
+		AgentPubkey: adv.PublicKeyString(),
+		Severity:    ledger.SeverityCritical,
+		ClaimHash:   "h1",
+		Stake:       8,
+	}
+	wirePub, err := PubkeyToWire(adv.PublicKeyString())
+	if err != nil {
+		t.Fatalf("wire: %v", err)
+	}
+	matching := &FindingState{
+		PlanID:      "P-A",
+		FindingID:   "F-1",
+		AgentPubkey: wirePub,
+		Severity:    "critical",
+		ClaimHash:   "h1",
+		Stake:       "8",
+	}
+	if err := verifyOnChainCommit(f, matching); err != nil {
+		t.Fatalf("matching state should pass: %v", err)
+	}
+
+	mismatches := []struct {
+		name  string
+		patch func(*FindingState)
+	}{
+		{"claim_hash", func(s *FindingState) { s.ClaimHash = "different" }},
+		{"agent_pubkey", func(s *FindingState) { s.AgentPubkey = "AAAAAAAA" }},
+		{"severity", func(s *FindingState) { s.Severity = "warning" }},
+		{"stake", func(s *FindingState) { s.Stake = "16" }},
+	}
+	for _, tt := range mismatches {
+		t.Run(tt.name, func(t *testing.T) {
+			cp := *matching
+			tt.patch(&cp)
+			if err := verifyOnChainCommit(f, &cp); err == nil {
+				t.Fatalf("%s mismatch should error", tt.name)
+			}
+		})
+	}
+}
+
+// TestVerifyOnChainResolution_MatchAndMismatch mirrors the commit-side test
+// for resolution verification (F-OPUS-001 / F-OPUS-006).
+func TestVerifyOnChainResolution_MatchAndMismatch(t *testing.T) {
+	pm := kpFromSeed(t, 0xB2)
+	r := &ledger.Resolution{
+		FindingID:      "F-1",
+		PlanID:         "P-A",
+		ResolverPubkey: pm.PublicKeyString(),
+		Outcome:        ledger.OutcomeTruePositive,
+		EvidenceHash:   "ev1",
+	}
+	wirePub, err := PubkeyToWire(pm.PublicKeyString())
+	if err != nil {
+		t.Fatalf("wire: %v", err)
+	}
+	matching := &ResolutionRecord{
+		Outcome:        "true_positive",
+		ResolverPubkey: wirePub,
+		EvidenceHash:   "ev1",
+	}
+	if err := verifyOnChainResolution(r, matching); err != nil {
+		t.Fatalf("matching state should pass: %v", err)
+	}
+	mismatches := []struct {
+		name  string
+		patch func(*ResolutionRecord)
+	}{
+		{"evidence_hash", func(s *ResolutionRecord) { s.EvidenceHash = "different" }},
+		{"outcome", func(s *ResolutionRecord) { s.Outcome = "false_positive" }},
+		{"resolver_pubkey", func(s *ResolutionRecord) { s.ResolverPubkey = "AAAAAAAA" }},
+	}
+	for _, tt := range mismatches {
+		t.Run(tt.name, func(t *testing.T) {
+			cp := *matching
+			tt.patch(&cp)
+			if err := verifyOnChainResolution(r, &cp); err == nil {
+				t.Fatalf("%s mismatch should error", tt.name)
+			}
+		})
+	}
+}
+
+// TestChunkFindingCommits pins the F-OPUS-003 chunking helper. The contract
+// rejects batches >100 with BatchTooLarge; client-side chunking keeps every
+// tx under that ceiling so >100-finding plans can settle.
+func TestChunkFindingCommits(t *testing.T) {
+	tests := []struct {
+		size       int
+		wantChunks int
+		wantSizes  []int
+	}{
+		{0, 1, []int{0}},
+		{1, 1, []int{1}},
+		{100, 1, []int{100}},
+		{101, 2, []int{100, 1}},
+		{200, 2, []int{100, 100}},
+		{250, 3, []int{100, 100, 50}},
+	}
+	for _, tt := range tests {
+		commits := make([]FindingCommit, tt.size)
+		for i := range commits {
+			commits[i] = FindingCommit{FindingID: "F", PlanID: "P"}
+		}
+		chunks := chunkFindingCommits(commits)
+		if len(chunks) != tt.wantChunks {
+			t.Fatalf("size=%d chunks: got %d want %d", tt.size, len(chunks), tt.wantChunks)
+		}
+		for i, c := range chunks {
+			if len(c) != tt.wantSizes[i] {
+				t.Fatalf("size=%d chunk %d: got %d want %d", tt.size, i, len(c), tt.wantSizes[i])
+			}
+			if len(c) > maxBatchChunkSize {
+				t.Fatalf("size=%d chunk %d exceeds max (%d > %d)", tt.size, i, len(c), maxBatchChunkSize)
+			}
+		}
+	}
+}
+
+// TestChunkResolutionCommits mirrors the commit-side chunking test.
+func TestChunkResolutionCommits(t *testing.T) {
+	commits := make([]ResolutionCommit, 235)
+	chunks := chunkResolutionCommits(commits)
+	if len(chunks) != 3 {
+		t.Fatalf("235 entries -> got %d chunks, want 3", len(chunks))
+	}
+	if len(chunks[0]) != 100 || len(chunks[1]) != 100 || len(chunks[2]) != 35 {
+		t.Fatalf("chunk sizes drift: %d,%d,%d", len(chunks[0]), len(chunks[1]), len(chunks[2]))
+	}
+}
+
+// TestSyncBudgetForPlans_Scales pins the F-OPUS-002 helper: the outer ctx
+// budget must scale with the number of plans so plans N+1 aren't truncated
+// by a fixed minute count.
+func TestSyncBudgetForPlans_Scales(t *testing.T) {
+	tests := []struct {
+		n       int
+		wantMin time.Duration
+	}{
+		{0, 5 * time.Minute},   // floor
+		{1, 5 * time.Minute},   // floor
+		{4, 5 * time.Minute},   // 4*90s*1.2 = 432s < 5m floor
+		{10, 18 * time.Minute}, // 10*90s*1.2 = 1080s
+		{20, 36 * time.Minute}, // 20*90s*1.2 = 2160s
+	}
+	for _, tt := range tests {
+		got := SyncBudgetForPlans(tt.n)
+		if got < tt.wantMin {
+			t.Fatalf("SyncBudgetForPlans(%d) = %v, want at least %v", tt.n, got, tt.wantMin)
+		}
 	}
 }

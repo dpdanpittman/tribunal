@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +67,28 @@ const defaultPreflightConcurrency = 8
 // of the caller's outer ctx. The caller's outer ctx still binds — this
 // is the additional per-plan cap on top of it. P-v033-audit's F-NEW-401.
 const perPlanSyncBudget = 90 * time.Second
+
+// SyncBudgetForPlans returns an upper bound on the wallclock budget needed
+// to sync n plans serially via SyncAll, sized so the outer ctx is never
+// the binding constraint when each plan stays inside perPlanSyncBudget.
+// Includes ~20% slack on top of the worst case, plus a floor so a
+// single-plan invocation gets some headroom for slow LCDs.
+//
+// F-OPUS-002: callers that derive an outer ctx from a fixed minute count
+// (the v0.3.4 CLI used 5m) silently truncate plans 4+ when the per-plan
+// budget could legitimately stretch the total above the outer bound.
+// Scaling per-plan removes that mismatch.
+func SyncBudgetForPlans(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	const floor = 5 * time.Minute
+	raw := time.Duration(n) * perPlanSyncBudget * 12 / 10
+	if raw < floor {
+		return floor
+	}
+	return raw
+}
 
 // CommitRealtime submits a single FindingCommit immediately and, on
 // failure, persists the message to the retry queue so plan-close sync
@@ -146,7 +170,10 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			continue
 		}
 		seenCommit[f.FindingID] = struct{}{}
-		if committedOnChain[f.FindingID] {
+		if state := committedOnChain[f.FindingID]; state != nil {
+			if err := verifyOnChainCommit(f, state); err != nil {
+				return nil, fmt.Errorf("preflight conflict (plan=%s): %w", planID, err)
+			}
 			continue
 		}
 		kp, err := s.Keys.KeypairFor(f.AgentPubkey)
@@ -167,7 +194,14 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			continue
 		}
 		seenCommit[q.Msg.CommitFinding.FindingID] = struct{}{}
-		if committedOnChain[q.Msg.CommitFinding.FindingID] {
+		if state := committedOnChain[q.Msg.CommitFinding.FindingID]; state != nil {
+			// Queued real-time commits don't carry the original ledger
+			// claim_hash separately from the message itself, so compare
+			// the message's claim_hash directly to the on-chain state.
+			if state.ClaimHash != q.Msg.CommitFinding.ClaimHash {
+				return nil, fmt.Errorf("preflight conflict (plan=%s) for queued commit %s: claim_hash mismatch (local=%q, on-chain=%q)",
+					planID, q.Msg.CommitFinding.FindingID, q.Msg.CommitFinding.ClaimHash, state.ClaimHash)
+			}
 			continue
 		}
 		commits = append(commits, *q.Msg.CommitFinding)
@@ -184,7 +218,10 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 			continue
 		}
 		seenResolve[r.FindingID] = struct{}{}
-		if resolvedOnChain[r.FindingID] {
+		if rec := resolvedOnChain[r.FindingID]; rec != nil {
+			if err := verifyOnChainResolution(r, rec); err != nil {
+				return nil, fmt.Errorf("preflight conflict (plan=%s): %w", planID, err)
+			}
 			continue
 		}
 		kp, err := s.Keys.KeypairFor(r.ResolverPubkey)
@@ -228,17 +265,25 @@ func (s *Sync) SyncPlan(ctx context.Context, planID string, findings []*ledger.F
 // to submitCommitBatch / submitResolveBatch which absorb the resulting
 // duplicate-rejection errors from the contract. After progress-threshold
 // elapses, emits a stderr note so operators see the loop is alive.
-func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]struct{}) (committed, resolved map[string]bool) {
-	committed = map[string]bool{}
-	resolved = map[string]bool{}
+//
+// v0.3.5: returns the full on-chain state (FindingState / ResolutionRecord)
+// per id instead of opaque booleans. Callers verify the on-chain claim_hash
+// + agent_pubkey + severity + stake match the local commit before trusting
+// "already committed" reports. A hostile LCD that fabricates a committed
+// response is caught at verifyOnChainCommit; without verification it could
+// silently drop a finding from sync at both call sites — recovery (already
+// addressed in v0.3.4) and the success path (F-OPUS-001). A nil entry in
+// either map means the LCD did not report on-chain state for that id.
+func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]struct{}) (committed map[string]*FindingState, resolved map[string]*ResolutionRecord) {
+	committed = map[string]*FindingState{}
+	resolved = map[string]*ResolutionRecord{}
 	if len(ids) == 0 {
 		return
 	}
 
 	type result struct {
-		id        string
-		committed bool
-		resolved  bool
+		id    string
+		state *FindingState
 	}
 
 	idCh := make(chan string, len(ids))
@@ -273,7 +318,7 @@ func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]stru
 					resCh <- result{id: id}
 					continue
 				}
-				resCh <- result{id: id, committed: true, resolved: resp.Finding.Resolution != nil}
+				resCh <- result{id: id, state: resp.Finding}
 			}
 		}()
 	}
@@ -299,14 +344,72 @@ func (s *Sync) preflight(ctx context.Context, planID string, ids map[string]stru
 	close(done)
 
 	for r := range resCh {
-		if r.committed {
-			committed[r.id] = true
-		}
-		if r.resolved {
-			resolved[r.id] = true
+		if r.state != nil {
+			committed[r.id] = r.state
+			if r.state.Resolution != nil {
+				resolved[r.id] = r.state.Resolution
+			}
 		}
 	}
 	return
+}
+
+// verifyOnChainCommit compares an on-chain FindingState against the local
+// ledger.Finding the operator is about to commit. Used by both the
+// preflight success path and the post-rejection recovery paths to refuse
+// a hostile-LCD silent drop: if the LCD reports a finding as already
+// committed but its on-chain claim_hash / agent_pubkey / severity / stake
+// don't match what we'd submit, we treat the report as adversarial and
+// surface it instead of trusting it.
+//
+// Returns nil if the on-chain entry matches; a non-nil error names the
+// first mismatched field.
+func verifyOnChainCommit(local *ledger.Finding, onChain *FindingState) error {
+	if local == nil || onChain == nil {
+		return fmt.Errorf("verify commit: nil input (local=%v, onChain=%v)", local == nil, onChain == nil)
+	}
+	if local.ClaimHash != onChain.ClaimHash {
+		return fmt.Errorf("verify commit %s: claim_hash mismatch (local=%q, on-chain=%q)", local.FindingID, local.ClaimHash, onChain.ClaimHash)
+	}
+	wirePub, err := PubkeyToWire(local.AgentPubkey)
+	if err != nil {
+		return fmt.Errorf("verify commit %s: local agent_pubkey not parseable: %w", local.FindingID, err)
+	}
+	if wirePub != onChain.AgentPubkey {
+		return fmt.Errorf("verify commit %s: agent_pubkey mismatch (local=%q, on-chain=%q)", local.FindingID, wirePub, onChain.AgentPubkey)
+	}
+	if string(local.Severity) != onChain.Severity {
+		return fmt.Errorf("verify commit %s: severity mismatch (local=%q, on-chain=%q)", local.FindingID, local.Severity, onChain.Severity)
+	}
+	localStake := strconv.FormatUint(uint64(local.Stake), 10)
+	if localStake != onChain.Stake {
+		return fmt.Errorf("verify commit %s: stake mismatch (local=%q, on-chain=%q)", local.FindingID, localStake, onChain.Stake)
+	}
+	return nil
+}
+
+// verifyOnChainResolution is the resolution-side equivalent of
+// verifyOnChainCommit — guards against a hostile LCD claiming a resolution
+// exists on-chain whose evidence_hash / outcome / resolver_pubkey differ
+// from what the operator's about to submit.
+func verifyOnChainResolution(local *ledger.Resolution, onChain *ResolutionRecord) error {
+	if local == nil || onChain == nil {
+		return fmt.Errorf("verify resolution: nil input (local=%v, onChain=%v)", local == nil, onChain == nil)
+	}
+	if local.EvidenceHash != onChain.EvidenceHash {
+		return fmt.Errorf("verify resolution %s: evidence_hash mismatch (local=%q, on-chain=%q)", local.FindingID, local.EvidenceHash, onChain.EvidenceHash)
+	}
+	if string(local.Outcome) != onChain.Outcome {
+		return fmt.Errorf("verify resolution %s: outcome mismatch (local=%q, on-chain=%q)", local.FindingID, local.Outcome, onChain.Outcome)
+	}
+	wirePub, err := PubkeyToWire(local.ResolverPubkey)
+	if err != nil {
+		return fmt.Errorf("verify resolution %s: local resolver_pubkey not parseable: %w", local.FindingID, err)
+	}
+	if wirePub != onChain.ResolverPubkey {
+		return fmt.Errorf("verify resolution %s: resolver_pubkey mismatch (local=%q, on-chain=%q)", local.FindingID, wirePub, onChain.ResolverPubkey)
+	}
+	return nil
 }
 
 // maxRecoveryAttempts caps the number of batch-level retries the recovery
@@ -345,7 +448,88 @@ const maxRecoveryAttempts = 5
 // Returns the final broadcast result, the count of findings actually
 // committed (excludes filtered duplicates), and an error if the batch
 // could not be made to land for a reason unrelated to duplicates.
+//
+// v0.3.5: chunks at maxBatchChunkSize before invoking the recovery loop.
+// The contract enforces MAX_BATCH_SIZE=100; a plan with >100 commits used
+// to hit BatchTooLarge on every attempt and the structured-query recovery
+// couldn't help (preflight returns no committed entries for fresh ones,
+// so the loop bails immediately). Chunking on the client side keeps each
+// tx under the contract limit. On partial failure the function returns
+// the chunks that did land along with the underlying error so callers
+// can render partial progress (F-OPUS-003).
 func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []FindingCommit) (*BroadcastResult, int, error) {
+	if len(commits) == 0 {
+		return nil, 0, nil
+	}
+	chunks := chunkFindingCommits(commits)
+	if len(chunks) == 1 {
+		return s.submitCommitChunk(ctx, planID, chunks[0])
+	}
+	var (
+		hashes    []string
+		totalSent int
+	)
+	for i, chunk := range chunks {
+		br, sent, err := s.submitCommitChunk(ctx, planID, chunk)
+		totalSent += sent
+		if br != nil && br.TxHash != "" {
+			hashes = append(hashes, br.TxHash)
+		}
+		if err != nil {
+			agg := &BroadcastResult{TxHash: strings.Join(hashes, ",")}
+			return agg, totalSent, fmt.Errorf("commit batch chunk %d/%d: %w", i+1, len(chunks), err)
+		}
+	}
+	return &BroadcastResult{TxHash: strings.Join(hashes, ",")}, totalSent, nil
+}
+
+// maxBatchChunkSize is the client-side ceiling on entries per
+// CommitFindingBatch / ResolveFindingBatch tx. Matches the contract's
+// MAX_BATCH_SIZE in `contracts/tribunal-reputation/src/validate.rs`. If
+// the contract ever raises its cap, this value can lag — exceeding it
+// surfaces as a BatchTooLarge error from the contract itself.
+const maxBatchChunkSize = 100
+
+// chunkFindingCommits splits a flat commit slice into sub-slices each
+// bounded by maxBatchChunkSize. Returns the input unchanged when it
+// already fits in one chunk. Pure function, exposed for unit testing of
+// the F-OPUS-003 fix.
+func chunkFindingCommits(commits []FindingCommit) [][]FindingCommit {
+	if len(commits) <= maxBatchChunkSize {
+		return [][]FindingCommit{commits}
+	}
+	chunks := make([][]FindingCommit, 0, (len(commits)+maxBatchChunkSize-1)/maxBatchChunkSize)
+	for i := 0; i < len(commits); i += maxBatchChunkSize {
+		end := i + maxBatchChunkSize
+		if end > len(commits) {
+			end = len(commits)
+		}
+		chunks = append(chunks, commits[i:end])
+	}
+	return chunks
+}
+
+// chunkResolutionCommits is the resolution-side equivalent of chunkFindingCommits.
+func chunkResolutionCommits(resCommits []ResolutionCommit) [][]ResolutionCommit {
+	if len(resCommits) <= maxBatchChunkSize {
+		return [][]ResolutionCommit{resCommits}
+	}
+	chunks := make([][]ResolutionCommit, 0, (len(resCommits)+maxBatchChunkSize-1)/maxBatchChunkSize)
+	for i := 0; i < len(resCommits); i += maxBatchChunkSize {
+		end := i + maxBatchChunkSize
+		if end > len(resCommits) {
+			end = len(resCommits)
+		}
+		chunks = append(chunks, resCommits[i:end])
+	}
+	return chunks
+}
+
+// submitCommitChunk is the single-chunk recovery loop — the body of what
+// submitCommitBatch was in v0.3.4. The outer chunking lives in
+// submitCommitBatch (v0.3.5).
+func (s *Sync) submitCommitChunk(ctx context.Context, planID string, commits []FindingCommit) (*BroadcastResult, int, error) {
+	var lastBroadcastErr error
 	for attempt := 0; attempt < maxRecoveryAttempts; attempt++ {
 		if len(commits) == 0 {
 			// Everything in the batch was already on-chain. No tx needed.
@@ -358,7 +542,10 @@ func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []F
 		}
 
 		// Recovery: query the contract for actual state of every entry in
-		// the batch. Anything the contract considers committed gets filtered.
+		// the batch. Anything the contract considers committed AND matches
+		// the local copy gets filtered; a mismatch means the LCD is lying
+		// (or another party committed a different payload under the same
+		// finding_id) and we surface it instead of trusting the report.
 		ids := map[string]struct{}{}
 		for _, c := range commits {
 			ids[c.FindingID] = struct{}{}
@@ -366,9 +553,17 @@ func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []F
 		committed, _ := s.preflight(ctx, planID, ids)
 		filtered := commits[:0]
 		for _, c := range commits {
-			if !committed[c.FindingID] {
+			state := committed[c.FindingID]
+			if state == nil {
 				filtered = append(filtered, c)
+				continue
 			}
+			// LCD says committed — verify it matches the commit we built.
+			if state.ClaimHash != c.ClaimHash || state.AgentPubkey != c.AgentPubkey || state.Severity != c.Severity || state.Stake != c.Stake {
+				return br, 0, fmt.Errorf("commit batch recovery: on-chain state for %s disagrees with local commit (claim_hash on-chain=%q local=%q): %w",
+					c.FindingID, state.ClaimHash, c.ClaimHash, err)
+			}
+			// Genuine duplicate — safe to drop from retry.
 		}
 		if len(filtered) == len(commits) {
 			// No duplicates explain the rejection. Surface the underlying error.
@@ -376,16 +571,54 @@ func (s *Sync) submitCommitBatch(ctx context.Context, planID string, commits []F
 		}
 		fmt.Fprintf(os.Stderr, "tribunal: commit batch recovered via state query, dropped %d already-committed, retrying with %d findings\n",
 			len(commits)-len(filtered), len(filtered))
+		lastBroadcastErr = err
 		commits = filtered
 	}
-	return nil, 0, fmt.Errorf("commit batch exhausted recovery attempts (cap=%d)", maxRecoveryAttempts)
+	remainingIDs := make([]string, 0, len(commits))
+	for _, c := range commits {
+		remainingIDs = append(remainingIDs, c.FindingID)
+	}
+	return nil, 0, fmt.Errorf("commit batch exhausted recovery attempts (cap=%d, remaining=%d %v): last_error=%w",
+		maxRecoveryAttempts, len(commits), remainingIDs, lastBroadcastErr)
 }
 
 // submitResolveBatch is the resolution-side equivalent of submitCommitBatch.
 // Uses the same structured-query recovery primitive — on rejection, queries
 // the contract for which findings already have resolutions and filters them
 // out of the retry. Bounded by maxRecoveryAttempts.
+//
+// v0.3.5: chunks at maxBatchChunkSize before delegating to submitResolveChunk,
+// mirroring submitCommitBatch's F-OPUS-003 fix.
 func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits []ResolutionCommit) (*BroadcastResult, int, error) {
+	if len(resCommits) == 0 {
+		return nil, 0, nil
+	}
+	chunks := chunkResolutionCommits(resCommits)
+	if len(chunks) == 1 {
+		return s.submitResolveChunk(ctx, planID, chunks[0])
+	}
+	var (
+		hashes    []string
+		totalSent int
+	)
+	for i, chunk := range chunks {
+		br, sent, err := s.submitResolveChunk(ctx, planID, chunk)
+		totalSent += sent
+		if br != nil && br.TxHash != "" {
+			hashes = append(hashes, br.TxHash)
+		}
+		if err != nil {
+			agg := &BroadcastResult{TxHash: strings.Join(hashes, ",")}
+			return agg, totalSent, fmt.Errorf("resolve batch chunk %d/%d: %w", i+1, len(chunks), err)
+		}
+	}
+	return &BroadcastResult{TxHash: strings.Join(hashes, ",")}, totalSent, nil
+}
+
+// submitResolveChunk is the single-chunk recovery loop — body of v0.3.4's
+// submitResolveBatch. Chunking lives in submitResolveBatch (v0.3.5).
+func (s *Sync) submitResolveChunk(ctx context.Context, planID string, resCommits []ResolutionCommit) (*BroadcastResult, int, error) {
+	var lastBroadcastErr error
 	for attempt := 0; attempt < maxRecoveryAttempts; attempt++ {
 		if len(resCommits) == 0 {
 			return nil, 0, nil
@@ -396,8 +629,10 @@ func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits
 			return br, len(resCommits), nil
 		}
 
-		// Recovery via contract-state query. resolved map tells us which
-		// findings already have on-chain resolutions.
+		// Recovery via contract-state query. resolved map carries the
+		// on-chain ResolutionRecord per finding_id; a mismatch means the
+		// LCD is asserting a resolution exists that doesn't match what
+		// we'd submit, and we surface it instead of trusting it.
 		ids := map[string]struct{}{}
 		for _, r := range resCommits {
 			ids[r.FindingID] = struct{}{}
@@ -405,8 +640,14 @@ func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits
 		_, resolved := s.preflight(ctx, planID, ids)
 		filtered := resCommits[:0]
 		for _, r := range resCommits {
-			if !resolved[r.FindingID] {
+			rec := resolved[r.FindingID]
+			if rec == nil {
 				filtered = append(filtered, r)
+				continue
+			}
+			if rec.EvidenceHash != r.EvidenceHash || rec.Outcome != r.Outcome || rec.ResolverPubkey != r.ResolverPubkey {
+				return br, 0, fmt.Errorf("resolve batch recovery: on-chain resolution for %s disagrees with local commit (evidence_hash on-chain=%q local=%q): %w",
+					r.FindingID, rec.EvidenceHash, r.EvidenceHash, err)
 			}
 		}
 		if len(filtered) == len(resCommits) {
@@ -414,9 +655,15 @@ func (s *Sync) submitResolveBatch(ctx context.Context, planID string, resCommits
 		}
 		fmt.Fprintf(os.Stderr, "tribunal: resolve batch recovered via state query, dropped %d already-resolved, retrying with %d resolutions\n",
 			len(resCommits)-len(filtered), len(filtered))
+		lastBroadcastErr = err
 		resCommits = filtered
 	}
-	return nil, 0, fmt.Errorf("resolve batch exhausted recovery attempts (cap=%d)", maxRecoveryAttempts)
+	remainingIDs := make([]string, 0, len(resCommits))
+	for _, r := range resCommits {
+		remainingIDs = append(remainingIDs, r.FindingID)
+	}
+	return nil, 0, fmt.Errorf("resolve batch exhausted recovery attempts (cap=%d, remaining=%d %v): last_error=%w",
+		maxRecoveryAttempts, len(resCommits), remainingIDs, lastBroadcastErr)
 }
 
 // SyncAll groups every entry in the ledger by plan_id and runs SyncPlan
