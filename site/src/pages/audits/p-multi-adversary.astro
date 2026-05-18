@@ -1,0 +1,190 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const reports = import.meta.glob<{ Content: any }>(
+  "../../../_content/reports/P-multi-adversary/*.md",
+  { eager: true }
+);
+
+const order = ["SYNTHESIS", "adversary-opus", "adversary-sonnet", "adversary-haiku", "adversary-qwen"];
+const labels: Record<string, { tab: string; accent: string }> = {
+  SYNTHESIS:          { tab: "Synthesis",       accent: "verdict-adversary" },
+  "adversary-opus":   { tab: "Opus 4.7",        accent: "verdict-critical" },
+  "adversary-sonnet": { tab: "Sonnet 4.6",      accent: "verdict-warn" },
+  "adversary-haiku":  { tab: "Haiku 4.5",       accent: "verdict-approve" },
+  "adversary-qwen":   { tab: "Qwen3-coder",     accent: "verdict-warn" },
+};
+
+const sections: { id: string; Content: any; tab: string; accent: string }[] = [];
+for (const path in reports) {
+  const m = path.match(/\/([^/]+)\.md$/);
+  if (!m) continue;
+  const id = m[1];
+  const meta = labels[id];
+  if (!meta) continue;
+  sections.push({ id, Content: (reports[path] as any).Content, tab: meta.tab, accent: meta.accent });
+}
+sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+
+const adversaries = [
+  { slot: "A1", model: "claude-opus-4-7",    family: "Anthropic", verdict: "BREAKS",         findings: "1 Critical + 4 Serious + 1 Suggestion", time: "553s" },
+  { slot: "A2", model: "claude-sonnet-4-6",  family: "Anthropic", verdict: "INDETERMINATE",  findings: "2 Serious + 1 Cosmetic",                 time: "291s" },
+  { slot: "A3", model: "claude-haiku-4-5",   family: "Anthropic", verdict: "SURVIVES",       findings: "2 Serious",                              time: "152s" },
+  { slot: "A4", model: "qwen3-coder:latest", family: "Alibaba",   verdict: "PIVOTED-N-C *",  findings: "~5 substantive + 40 restatements",       time: "627s" },
+];
+
+const hypotheses = [
+  { h: "H1", claim: "Cross-family additive — Qwen finds Critical/Serious none of the Claudes raise", verdict: "REFUTED",   accent: "verdict-critical" },
+  { h: "H2", claim: "Intra-family disagreement — Claudes disagree non-trivially on the same input", verdict: "CONFIRMED", accent: "verdict-approve" },
+  { h: "H3", claim: "Consensus convergence — some findings raised by all 4 adversaries",            verdict: "CONFIRMED", accent: "verdict-approve" },
+  { h: "H4", claim: "No cross-family signal — Qwen surfaces nothing the Claudes miss",              verdict: "CONFIRMED", accent: "verdict-critical" },
+];
+---
+<Base title="Audit · P-multi-adversary" description="Four adversaries against the v0.3.4 diff. The intra-Claude vs cross-family experiment that motivated v0.4.0.">
+  <section class="border-b border-ink-800/80 bg-grid">
+    <div class="max-w-6xl mx-auto px-6 pt-16 pb-12">
+      <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-5">
+        Case study · 2026-05-17 (four-adversary experiment)
+      </p>
+      <h1 class="font-display text-4xl sm:text-5xl font-semibold text-ink-50 tracking-tight leading-[1.1]">
+        Cross-family was the wrong axis.
+      </h1>
+      <p class="mt-6 text-lg text-ink-300 max-w-3xl leading-relaxed">
+        Tribunal's lineage inherits from <a href="https://github.com/reliqlabs/colosseum" class="text-verdict-adversary underline underline-offset-2 hover:text-verdict-approve">Colosseum</a>,
+        whose Pillar #2 says: <em>different model families have different blind spots; combining them gives additive
+        coverage.</em> This audit tested that claim empirically. Four adversaries — Opus, Sonnet, Haiku, and Qwen —
+        attacked the v0.3.4 diff with identical context. <strong class="text-ink-50">H1 refuted. H2 confirmed strongly.</strong>
+        The most novel finding of the entire panel — F-OPUS-004, a Unicode bypass — came from intra-Claude diversity,
+        not cross-family. v0.4.0 ships what the data points at.
+      </p>
+
+      <div class="mt-10 rounded-xl border border-ink-700 bg-ink-900/60 p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-3 text-sm">
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Plan ID</p>
+          <p class="hash mt-1">P-multi-adversary</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Target diff</p>
+          <p class="hash mt-1">fb37c3c (v0.3.4)</p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Methodology pivot</p>
+          <p class="mt-1 inline-flex items-center gap-2 px-2 py-0.5 rounded border verdict-adversary text-xs uppercase tracking-wider font-mono">
+            Intra-Claude promoted
+          </p>
+        </div>
+        <div>
+          <p class="text-ink-400 text-xs uppercase tracking-[0.16em] font-mono">Shipped as</p>
+          <p class="hash mt-1">v0.4.0</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- THE PANEL -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <h2 class="font-display text-2xl sm:text-3xl font-semibold text-ink-50 tracking-tight">The panel</h2>
+      <p class="mt-3 text-ink-300 max-w-3xl leading-relaxed">
+        Four adversaries, identical context (intent + plan + diff + three reviewer reports). The Anthropic slots span
+        three model tiers; the Alibaba slot is the cross-family probe. Qwen3-coder was substituted for the originally
+        specified qwen3:32b dense because the dense model + 36k-token prompt did not fit in 24GB VRAM — methodology
+        caveat noted in the synthesis.
+      </p>
+      <div class="mt-8 overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="text-left text-xs uppercase tracking-[0.16em] text-ink-400 font-mono border-b border-ink-700">
+              <th class="py-2 pr-4">Slot</th>
+              <th class="py-2 pr-4">Model</th>
+              <th class="py-2 pr-4">Family</th>
+              <th class="py-2 pr-4">Verdict</th>
+              <th class="py-2 pr-4">Findings</th>
+              <th class="py-2 pr-4">Wall time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adversaries.map((a) => (
+              <tr class="border-b border-ink-800/60">
+                <td class="py-3 pr-4 hash">{a.slot}</td>
+                <td class="py-3 pr-4 hash">{a.model}</td>
+                <td class="py-3 pr-4 text-ink-300">{a.family}</td>
+                <td class="py-3 pr-4 hash text-ink-50">{a.verdict}</td>
+                <td class="py-3 pr-4 text-ink-300">{a.findings}</td>
+                <td class="py-3 pr-4 hash text-ink-400">{a.time}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-5 text-xs text-ink-400 leading-relaxed">
+        * Qwen-coder used a non-standard verdict label phrased almost verbatim from P-v034-audit's own self-assessment,
+        suggesting input-anchoring rather than independent verdict derivation.
+      </p>
+    </div>
+  </section>
+
+  <!-- HYPOTHESIS VERDICTS -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <h2 class="font-display text-2xl sm:text-3xl font-semibold text-ink-50 tracking-tight">Hypothesis verdicts</h2>
+      <div class="mt-8 grid sm:grid-cols-2 gap-5">
+        {hypotheses.map((h) => (
+          <div class="rounded-xl border border-ink-700 bg-ink-900/40 p-6">
+            <p class={`text-xs uppercase tracking-[0.2em] font-mono mb-2 text-${h.accent}`}>{h.h}</p>
+            <p class="text-ink-200 leading-relaxed">{h.claim}</p>
+            <p class={`mt-4 inline-flex items-center gap-2 px-2 py-0.5 rounded border text-xs uppercase tracking-wider font-mono text-${h.accent} border-${h.accent}/40 bg-${h.accent}/5`}>
+              {h.verdict}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- THE PIVOT -->
+  <section class="border-b border-ink-800/80">
+    <div class="max-w-6xl mx-auto px-6 py-14">
+      <div class="rounded-xl border border-verdict-adversary/40 bg-verdict-adversary/5 p-7 sm:p-10">
+        <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-4">v0.4.0 methodology pivot</p>
+        <h2 class="font-display text-2xl sm:text-3xl font-semibold text-ink-50 tracking-tight leading-snug">
+          The default adversary panel is now opus + sonnet + haiku.
+        </h2>
+        <p class="mt-5 text-ink-200 max-w-3xl leading-relaxed">
+          Pre-v0.4 the default was two opus variants + one sonnet — overlapping model tiers that suppressed exactly the
+          diversity signal this experiment validated. v0.4.0 promotes the three distinct tiers (Opus / Sonnet / Haiku)
+          to the default panel. <strong class="text-ink-50">No extra API spend</strong> — still fits inside a single
+          Claude subscription. The cross-family slot stays in the opt-in high-stakes panel for environments that have
+          keys for a second vendor.
+        </p>
+        <p class="mt-4 text-ink-200 max-w-3xl leading-relaxed">
+          The diversity-bucket default also flips: from <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">composite:vendor_family,focus</code>
+          to <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">composite:model_tier,focus</code>. The old default
+          would have lumped all three Claudes into the same <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">anthropic</code>
+          bucket — hiding the intra-tier disagreement signal v0.4.0 is built around.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section>
+    <div class="max-w-4xl mx-auto px-6 py-14">
+      <h2 class="font-display text-2xl sm:text-3xl font-semibold text-ink-50 tracking-tight">Reports</h2>
+      <p class="mt-3 text-ink-300 leading-relaxed">
+        Synthesis first; then each adversary's full report in the order they were dispatched. The opus report is the
+        longest — it produced 1 Critical + 4 Serious + 1 Suggestion across distinct attack scenarios.
+      </p>
+      <div class="mt-10 space-y-12">
+        {sections.map((s) => (
+          <article id={s.id} class="rounded-xl border border-ink-700/60 bg-ink-900/40 p-7 sm:p-10">
+            <p class={`text-xs uppercase tracking-[0.2em] font-mono mb-4 text-${s.accent}`}>{s.tab}</p>
+            <div class="prose prose-invert max-w-none">
+              <s.Content />
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>

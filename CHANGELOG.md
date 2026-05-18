@@ -14,6 +14,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.4.0] — 2026-05-17
+
+The intra-Claude diversity release. The first Tribunal version whose adversary-panel composition is grounded in empirical multi-adversary measurement, not theoretical vendor diversity.
+
+P-multi-adversary (2026-05-17) ran four adversaries — Opus 4.7, Sonnet 4.6, Haiku 4.5, and a cross-family Qwen3-coder — against the v0.3.4 diff (`fb37c3c`). Four hypotheses tested. **H1 — cross-family additive diversity: REFUTED.** Qwen produced zero unique substantive findings the Claudes hadn't already raised. **H2 — intra-family disagreement: CONFIRMED.** Opus said BREAKS, Sonnet said INDETERMINATE, Haiku said SURVIVES on the same input; each surfaced distinct findings. The most novel finding of the entire panel — F-OPUS-004 (Unicode bypass of `looksLikeTestChain`) — came from intra-Claude diversity, not cross-family. Full synthesis at `.tribunal/reports/P-multi-adversary/SYNTHESIS.md`.
+
+v0.4.0 ships the panel composition the data points at. The cross-family hypothesis stays live as TIER-2; intra-Claude is promoted to the load-bearing primitive.
+
+### Changed
+
+- **`default_panel` is now three distinct Claude model tiers** — `claude-opus-4-7` + `claude-sonnet-4-6` + `claude-haiku-4-5-20251001`, each with a different focus axis (spec / impl / temporal). The pre-v0.4 default was two opus variants + one sonnet — overlapping tiers that suppressed exactly the diversity signal the experiment validated. No extra API spend; fits inside a single Claude subscription.
+- **`high_stakes_panel` reshape: intra-Claude trio + one cross-family slot.** Pre-v0.4 high-stakes was 4 distinct vendors with no Claude redundancy — strictly worse on the empirical evidence. v0.4.0 keeps the cross-family slot (defaults to local `qwen3:32b`) for the TIER-2 opt-in signal but makes intra-Claude the load-bearing layer underneath.
+- **Default diversity bucket flipped from `composite:vendor_family,focus` to `composite:model_tier,focus`** in `tribunal review`, `tribunal dispatch attack`, and `SelectBucket("")`. The old default lumped all three Claudes into the same `anthropic` bucket — would have hidden the intra-tier disagreement signal v0.4.0 is built around.
+
+### Tests
+
+- `TestDefaultDispatchConfigShape` rewritten to pin the v0.4.0 invariants — default panel spans three distinct Claude model tiers (opus / sonnet / haiku); high-stakes panel includes the full intra-Claude trio plus at least one non-Claude vendor.
+
+### Docs
+
+- `docs/methodology.md` "Diversity" section rewritten with the P-multi-adversary empirical motivation. The pre-v0.4 framing ("three Claude variants with temperature × focus") is replaced with the new intra-tier framing and the explicit observation that the v0.3.X composition was the strictly-worse predecessor.
+
+### What v0.4.0 does NOT ship
+
+- **`tribunal converge`** — the convergence-controller M1 described in `docs/adr/0001-convergence-controller.md`. SYNTHESIS recommended deprioritizing this in favor of the panel-composition pivot. Re-scheduled for v0.4.1.
+- **Property-based testing scaffolding.** SYNTHESIS recommended promoting PBT from v0.4.1; deferred to v0.4.2 after the convergence controller lands.
+
 ## [0.3.5] — 2026-05-17
 
 Audit-driven fix release. P-multi-adversary's four-adversary panel (claude-opus, claude-sonnet, qwen3-coder, deepseek-r1) refuted H1 (cross-family additive diversity) but confirmed H2 (intra-family disagreement is real) — and surfaced six novel opus findings whose blast radius extended past what the lens reviewers caught. F-OPUS-004 (`looksLikeTestChain` Unicode bypass) shipped at e035a4f. v0.3.5 closes the remaining four — F-OPUS-001 / 002 / 003 / 005 — plus addresses F-OPUS-006 transitively via the F-OPUS-001 success-path fix. No contract changes; no migration. Audit reports: `.tribunal/reports/P-multi-adversary/SYNTHESIS.md` and `.tribunal/reports/P-v035-followup/`.

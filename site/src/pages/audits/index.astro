@@ -3,6 +3,14 @@ import Base from "../../layouts/Base.astro";
 
 const audits = [
   {
+    slug: "p-multi-adversary",
+    title: "Cross-family vs intra-Claude — the four-adversary experiment",
+    date: "2026-05-17",
+    verdict: "Methodology pivot",
+    summary: "Ran four adversaries (Opus 4.7 + Sonnet 4.6 + Haiku 4.5 + Qwen3-coder) against the v0.3.4 diff. H1 (cross-family additive): REFUTED — Qwen produced zero substantive findings the Claudes hadn't raised. H2 (intra-family disagreement): CONFIRMED — three different verdicts on the same input, and the most novel finding (F-OPUS-004 Unicode bypass) came from intra-Claude diversity. v0.4.0 ships what the data points at: opus + sonnet + haiku is now the default panel.",
+    findings: { critical: 1, warning: 4, suggestion: 6 },
+  },
+  {
     slug: "p-v034-audit",
     title: "The convergence test",
     date: "2026-05-14",

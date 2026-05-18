@@ -6,13 +6,17 @@ import (
 	"testing"
 )
 
+// TestDefaultDispatchConfigShape pins the v0.4.0 intra-Claude diversity
+// panel: default = three distinct Claude tiers (opus + sonnet + haiku);
+// high-stakes = same trio + one cross-family slot. P-multi-adversary's H2
+// confirmation (intra-family disagreement is real) drove this reshape.
 func TestDefaultDispatchConfigShape(t *testing.T) {
 	cfg := DefaultDispatchConfig()
 	if len(cfg.DefaultPanel) != 3 {
 		t.Errorf("default panel = %d members, want 3", len(cfg.DefaultPanel))
 	}
 	if len(cfg.HighStakesPanel) != 4 {
-		t.Errorf("high-stakes panel = %d members, want 4", len(cfg.HighStakesPanel))
+		t.Errorf("high-stakes panel = %d members, want 4 (intra-Claude trio + 1 cross-family slot)", len(cfg.HighStakesPanel))
 	}
 	// Default panel is all Claude.
 	for i, m := range cfg.DefaultPanel {
@@ -20,13 +24,37 @@ func TestDefaultDispatchConfigShape(t *testing.T) {
 			t.Errorf("default[%d].Provider = %q, want claude", i, m.Provider)
 		}
 	}
-	// High-stakes spans 4 distinct vendor families.
+	// v0.4.0: default panel must span three distinct Claude model tiers
+	// (opus, sonnet, haiku) — that's the load-bearing diversity primitive.
+	tiers := map[string]bool{}
+	for _, m := range cfg.DefaultPanel {
+		tiers[BucketByModelTier(m)] = true
+	}
+	wantTiers := map[string]bool{"opus": true, "sonnet": true, "haiku": true}
+	if len(tiers) != 3 {
+		t.Errorf("default panel spans %d model tiers, want 3: %v", len(tiers), tiers)
+	}
+	for tier := range wantTiers {
+		if !tiers[tier] {
+			t.Errorf("default panel missing model tier %q (have %v)", tier, tiers)
+		}
+	}
+	// v0.4.0: high-stakes panel must include the intra-Claude trio as its
+	// load-bearing layer plus at least one non-Claude slot for the cross-
+	// family TIER-2 signal.
+	highTiers := map[string]bool{}
 	families := map[string]bool{}
 	for _, m := range cfg.HighStakesPanel {
+		highTiers[BucketByModelTier(m)] = true
 		families[BucketByVendorFamily(m)] = true
 	}
-	if len(families) != 4 {
-		t.Errorf("high-stakes spans %d families, want 4", len(families))
+	for tier := range wantTiers {
+		if !highTiers[tier] {
+			t.Errorf("high-stakes panel missing intra-Claude tier %q (have %v)", tier, highTiers)
+		}
+	}
+	if len(families) < 2 {
+		t.Errorf("high-stakes panel must span ≥2 vendor families (have %v)", families)
 	}
 }
 

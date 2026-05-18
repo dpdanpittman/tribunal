@@ -99,10 +99,15 @@ func BucketComposite(fns ...BucketFn) BucketFn {
 // and "composite:axis1,axis2,...".
 //
 // SelectBucket("") and SelectBucket("default") return
-// BucketComposite(BucketByVendorFamily, BucketByFocus).
+// BucketComposite(BucketByModelTier, BucketByFocus). v0.4.0 flipped the
+// default from vendor_family,focus to model_tier,focus because
+// P-multi-adversary's H2 confirmed intra-Claude (opus / sonnet / haiku)
+// disagreement is the load-bearing diversity primitive — vendor_family
+// would lump all three Claudes into the same "anthropic" bucket and
+// suppress that signal.
 func SelectBucket(spec string) (BucketFn, error) {
 	if spec == "" || spec == "default" {
-		return BucketComposite(BucketByVendorFamily, BucketByFocus), nil
+		return BucketComposite(BucketByModelTier, BucketByFocus), nil
 	}
 	if strings.HasPrefix(spec, "composite:") {
 		axes := strings.Split(strings.TrimPrefix(spec, "composite:"), ",")

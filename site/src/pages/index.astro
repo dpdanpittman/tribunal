@@ -41,7 +41,7 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 pt-20 pb-24">
       <div class="max-w-3xl">
         <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">
-          v0.3.4 · audit-driven · public ledger
+          v0.4.0 · intra-Claude diversity · public ledger
         </p>
         <h1 class="font-display text-5xl sm:text-6xl font-semibold text-ink-50 tracking-tight leading-[1.05]">
           Ship LLM code <span class="text-verdict-adversary">without</span> inheriting LLM failure modes.
@@ -156,15 +156,17 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="rounded-2xl border border-ink-700 bg-ink-900/40 p-10 sm:p-14">
         <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight max-w-2xl">
-          Three self-audits in. The convergence answer is interesting.
+          v0.4.0 ships what the multi-adversary data points at.
         </h2>
         <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
-          v0.3.4 shipped the architectural pivot P-v033's adversary prescribed (replace regex-on-error-text
-          with a structured contract-state query). P-v034 tested whether it converged. Result:
-          <em>pivoted but not converged</em>. The methodology converges on specific defect SHAPES but the
-          underlying defect FAMILIES persist in new primitives — and the adversary surfaced a Critical
-          that had been latent in older code across all three cycles. v0.4 must close defect families
-          architecturally, not patch their instances.
+          P-multi-adversary ran four adversaries — Opus, Sonnet, Haiku, and a cross-family Qwen — against
+          the v0.3.4 diff. <strong>H1 (cross-family additive diversity): refuted</strong> — Qwen produced
+          zero unique findings the Claudes hadn't already raised.
+          <strong>H2 (intra-family disagreement): confirmed</strong> — Opus said BREAKS, Sonnet said
+          INDETERMINATE, Haiku said SURVIVES on the same input, and the most novel finding of the panel
+          (F-OPUS-004, a Unicode bypass) came from intra-Claude diversity, not cross-family. v0.4.0
+          promotes that empirical winner to the default panel: opus + sonnet + haiku instead of overlapping
+          opus/sonnet variants.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="/audits/p-v033-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">

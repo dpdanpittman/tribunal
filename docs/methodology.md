@@ -122,9 +122,11 @@ In practice, you can get most of the diversity payoff from **within-family varia
 - Different snapshot (4.6 vs. 4.7, etc.).
 - Different reasoning budget.
 
-The **default adversary panel** is three Claude variants with different temperature × focus configurations — fits inside a single Claude Code subscription, no extra API spend. The **high-stakes panel** is an explicit opt-in that fans the same prompt out across vendor families simultaneously and produces a synthesis report covering shared, unique, and divergent findings. `@project-manager` opts in via Assignment for changes where shared-training-corpus blind spots actually matter (mainnet contracts, security-critical paths, compliance-adjacent code).
+The **default adversary panel** (v0.4.0) is the three distinct Claude model tiers — Opus + Sonnet + Haiku — each with a different focus axis. No extra API spend over a single Claude subscription. The **high-stakes panel** adds one cross-family slot on top of that trio for environments that have keys for a second vendor; the intra-Claude trio is the load-bearing primitive, not a fallback. `@project-manager` opts in via Assignment when the cross-family TIER-2 signal matters (mainnet contracts, security-critical paths, compliance-adjacent code).
 
-This dimension-agnostic dispatch lets the reputation ledger _learn_ which kind of diversity actually pays off over time. After enough plans, the leaderboard can tell you whether cross-vendor adversaries find materially more unique critical bugs than three Claudes with different prompts — and you decide whether to pay for the vendor diversity going forward based on real data, not a priori theory.
+This shape is empirically grounded, not theoretical. P-multi-adversary (2026-05-17) ran four adversaries — Opus, Sonnet, Haiku, and a cross-family Qwen — against the same v0.3.4 diff. Cross-family produced **zero** unique findings the Claudes missed (H1 refuted, provisionally). Intra-Claude diversity produced three distinct verdicts on the same input and surfaced the most novel finding of the panel — F-OPUS-004, a Unicode bypass in `looksLikeTestChain` that Sonnet and Haiku both missed. The v0.3.X-era default of three opus/sonnet variants with overlapping tiers was strictly worse than the new opus + sonnet + haiku composition, and the v0.4.0 reshape ships that empirical winner as the default.
+
+This dimension-agnostic dispatch lets the reputation ledger _learn_ which kind of diversity actually pays off over time. After enough plans, the leaderboard can tell you whether cross-vendor adversaries find materially more unique critical bugs than the intra-Claude trio — and you decide whether to pay for the vendor diversity going forward based on real data, not a priori theory.
 
 ## The verification pyramid
 
@@ -243,7 +245,7 @@ Where `decay` is exponential with a 30-day half-life and `severity_weight` is `{
 
 A unique finding surfaced by an agent whose _diversity bucket_ hasn't produced a finding in the current round gets a 1.5× reward multiplier. The diversity bucket is configurable per project; reasonable choices include vendor family (`anthropic` / `openai` / `google` / `local`), temperature band (`deterministic` / `creative`), prompt focus (`spec` / `impl` / `temporal`), or a combination.
 
-For within-Claude panels (the v0.2 default), the bucket is typically `(temperature_band, focus)`. For cross-vendor panels (high-stakes opt-in), the bucket is typically `vendor_family`. The methodology is agnostic — the goal is to encourage variance along whichever axis you've configured.
+For the intra-Claude panel (the v0.4.0 default), the bucket is `(model_tier, focus)` — opus / sonnet / haiku each occupy their own bucket, so a finding raised by only one tier reads as a real blind-spot escape rather than a vendor-bucket dedup. For cross-vendor panels (high-stakes opt-in), the bucket is typically `(vendor_family, focus)` since the cross-family slot is the diversity axis the operator paid extra for. The methodology is agnostic — the goal is to encourage variance along whichever axis you've configured.
 
 ### On-chain anchoring
 

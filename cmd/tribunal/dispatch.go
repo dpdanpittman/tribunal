@@ -129,7 +129,7 @@ not the full review orchestration. For the full hybrid review, use
 		},
 	}
 	cmd.Flags().StringVar(&panelName, "panel", "default", "Panel name (default | high-stakes)")
-	cmd.Flags().StringVar(&bucket, "bucket", "composite:vendor_family,focus", "Diversity bucket axis")
+	cmd.Flags().StringVar(&bucket, "bucket", "composite:model_tier,focus", "Diversity bucket axis (v0.4.0: model_tier,focus surfaces intra-Claude diversity)")
 	return cmd
 }
 

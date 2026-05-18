@@ -117,7 +117,7 @@ registered on first use unless --no-auto-register).`,
 	}
 	cmd.Flags().StringVar(&planID, "plan", "", "Plan ID under .tribunal/plans/ (e.g. P-42)")
 	cmd.Flags().StringVar(&panelName, "panel", "default", "Adversary panel name (default | high-stakes)")
-	cmd.Flags().StringVar(&bucket, "bucket", "composite:vendor_family,focus", "Diversity bucket axis")
+	cmd.Flags().StringVar(&bucket, "bucket", "composite:model_tier,focus", "Diversity bucket axis (v0.4.0: model_tier,focus surfaces intra-Claude diversity; pre-v0.4 used vendor_family,focus)")
 	cmd.Flags().StringVar(&diffSpec, "diff", "HEAD~1..HEAD", "Diff spec: git range, file path, or 'staged'")
 	cmd.Flags().StringVar(&adversaryMD, "adversary-md", "", "Path to tribunal-adversary.md (defaults to installed agents/ dir or this repo's agents/)")
 	cmd.Flags().BoolVar(&noLedger, "no-ledger", false, "Do not sign + append findings to the ledger")

@@ -14,13 +14,19 @@ import (
 // top-level `adversary:` mapping.
 type Config struct {
 	// DefaultPanel is the panel dispatched when an Assignment doesn't ask
-	// for high-stakes review. The methodology recommends three Claude
-	// variants with different focus and temperature.
+	// for high-stakes review. v0.4.0 pivot: three distinct Claude model
+	// tiers (opus + sonnet + haiku) instead of three opus/sonnet variants.
+	// The intra-Claude diversity panel is the empirical winner from
+	// P-multi-adversary (H2 confirmed: intra-family disagreement is real;
+	// F-OPUS-004 the most novel finding came from this configuration).
 	DefaultPanel []PanelMember `yaml:"default_panel"`
 
-	// HighStakesPanel is the cross-vendor panel dispatched when an
-	// Assignment declares `Adversary mode: high-stakes`. Recommended:
-	// Claude + OpenAI + Gemini + local for genuine vendor diversity.
+	// HighStakesPanel adds a cross-family slot on top of the intra-Claude
+	// trio. v0.4.0 reshape: intra-Claude is the load-bearing primitive
+	// (the cheap empirical winner); the cross-family slot is the TIER-2
+	// optimization for genuine multi-vendor signal. P-multi-adversary H1
+	// REFUTED with a methodology caveat — high-stakes still earns its keep
+	// for environments that have keys for >1 vendor.
 	HighStakesPanel []PanelMember `yaml:"high_stakes_panel"`
 }
 
@@ -57,25 +63,33 @@ func LoadConfig(projectRoot string) (Config, error) {
 }
 
 // DefaultDispatchConfig returns the methodology's recommended panels:
-//   - Default: three Claude variants with different focus + temperature.
-//   - High-stakes: cross-vendor with one Claude + one OpenAI + one Gemini + one local.
+//
+//   - Default: three Claude model tiers (opus + sonnet + haiku), each
+//     with a distinct focus axis. v0.4.0 pivot — the previous default
+//     was three opus/sonnet variants with identical model tiers; the
+//     P-multi-adversary experiment showed that intra-tier disagreement
+//     (opus vs sonnet vs haiku) is the cheap empirical winner.
+//
+//   - High-stakes: the intra-Claude trio plus one cross-family slot.
+//     v0.4.0 reshape — the previous high-stakes panel was 4 distinct
+//     vendors with no Claude redundancy. P-multi-adversary H1 was
+//     refuted (provisionally); the cross-family slot stays for the
+//     opt-in TIER-2 signal but intra-Claude is the load-bearing layer.
 //
 // These are *recommendations*. The orchestrator dispatches only members
 // whose providers are registered, so missing API keys quietly demote a
 // member to INDETERMINATE rather than crash the panel.
 func DefaultDispatchConfig() Config {
+	intraClaude := []PanelMember{
+		{Label: "claude-opus-spec", Provider: "claude", Model: "claude-opus-4-7", Temperature: 0, Focus: "spec"},
+		{Label: "claude-sonnet-impl", Provider: "claude", Model: "claude-sonnet-4-6", Temperature: 0.7, Focus: "impl"},
+		{Label: "claude-haiku-temporal", Provider: "claude", Model: "claude-haiku-4-5-20251001", Temperature: 0, Focus: "temporal"},
+	}
 	return Config{
-		DefaultPanel: []PanelMember{
-			{Label: "claude-spec", Provider: "claude", Model: "claude-opus-4-7", Temperature: 0, Focus: "spec"},
-			{Label: "claude-impl", Provider: "claude", Model: "claude-opus-4-7", Temperature: 0.7, Focus: "impl"},
-			{Label: "claude-temporal", Provider: "claude", Model: "claude-sonnet-4-6", Temperature: 0, Focus: "temporal"},
-		},
-		HighStakesPanel: []PanelMember{
-			{Label: "claude-spec", Provider: "claude", Model: "claude-opus-4-7", Temperature: 0, Focus: "spec"},
-			{Label: "gpt-spec", Provider: "openai", Model: "gpt-5", Temperature: 0, Focus: "spec"},
-			{Label: "gemini-spec", Provider: "google", Model: "gemini-2.5-pro", Temperature: 0, Focus: "spec"},
-			{Label: "local-spec", Provider: "local", Model: "qwen-3-32b", Temperature: 0, Focus: "spec"},
-		},
+		DefaultPanel: intraClaude,
+		HighStakesPanel: append(append([]PanelMember{}, intraClaude...),
+			PanelMember{Label: "local-qwen-security", Provider: "local", Model: "qwen3:32b", Temperature: 0, Focus: "security"},
+		),
 	}
 }
 
