@@ -18,6 +18,15 @@ The novel piece neither has: **reputation-weighted findings**. Agents have verif
 
 **Live**: [tribunal.mabus.ai](https://tribunal.mabus.ai) — methodology, [sample audits](https://tribunal.mabus.ai/audits/), and the [on-chain leaderboard](https://tribunal.mabus.ai/leaderboard) that queries the deployed contract on `xion-testnet-2` from the browser.
 
+## How it composes with clawpatch
+
+As of v0.3.4+ ([ADR-0002](./docs/adr/0002-clawpatch-absorption.md), 2026-05-17), Tribunal's lens-parallel review stage can run through [clawpatch](https://github.com/openclaw/clawpatch) as a subprocess. The trust/discovery split:
+
+- **Clawpatch** owns discovery — heuristic + agent-based feature mapping, per-feature LLM review, fix-and-revalidate loops.
+- **Tribunal** owns trust — agent identity, ed25519-signed findings, adversarial multi-model review, PM/QA-settled outcomes, on-chain reputation.
+
+Run `tribunal review --via-clawpatch` and the lens stage dispatches via clawpatch instead of expecting skill-trio reports on disk. Findings come back through `internal/clawpatch/translate.go`, get signed by Tribunal-orchestrator, and land in the existing ledger. Two upstream PRs ([#64 `--prompt-file`](https://github.com/openclaw/clawpatch/pull/64), [#65 `--export-tribunal-ledger`](https://github.com/openclaw/clawpatch/pull/65)) added the integration hooks; both merged 2026-05-18. `tribunal fix --finding <id>` and `tribunal revalidate` round-trip state back to clawpatch via signed triage events.
+
 ## Quick start
 
 > Requires Go 1.23+. Optional: an Anthropic API key (`ANTHROPIC_API_KEY`) for the Claude adversary panel; v0.3+ adds Burnt XION on-chain settlement.
