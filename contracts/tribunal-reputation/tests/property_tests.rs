@@ -165,12 +165,7 @@ fn rotate(
     .unwrap();
 }
 
-fn commit_batch(
-    app: &mut App,
-    contract: &Addr,
-    plan_id: &str,
-    findings: Vec<FindingCommit>,
-) {
+fn commit_batch(app: &mut App, contract: &Addr, plan_id: &str, findings: Vec<FindingCommit>) {
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
@@ -244,7 +239,12 @@ fn resolve(
     outcome: &str,
 ) {
     let evidence_hash = "evd";
-    let sig = resolver.sign(&canonical_resolution(plan_id, finding_id, outcome, evidence_hash));
+    let sig = resolver.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        outcome,
+        evidence_hash,
+    ));
     app.execute_contract(
         Addr::unchecked(ADMIN),
         contract.clone(),
