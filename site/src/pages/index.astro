@@ -9,15 +9,15 @@ const pillars = [
     accent: "verdict-approve",
   },
   {
-    label: "02 — Lens-parallel trio",
-    title: "Three reviewers with non-overlapping mandates",
-    body: "Architecture, security, and performance — dispatched in parallel, each filing signed findings at calibrated severity. Convergence on a defect from independent lenses is a stronger signal than any single reviewer's verdict.",
+    label: "02 — Lens-parallel reviewers",
+    title: "Non-overlapping mandates, dispatched in parallel",
+    body: "Architecture, security, and performance by default — each filing signed findings at calibrated severity. A fourth, opt-in temporal lens (v0.5) reviews systems whose central claim is longitudinal: memory, identity, accumulation, drift. Opt in via intent.md when the load-bearing property only emerges over many cycles.",
     accent: "verdict-warn",
   },
   {
     label: "03 — Adversary gate",
     title: "Find what the trio missed",
-    body: "After trio approval, one adversary attacks the same diff with the trio's reports in hand. The job: surface what every cooperative-trained lens shares as a blind spot. Multi-model when stakes warrant.",
+    body: "After lens approval, one adversary attacks the same diff with all reviewer reports in hand. The job: surface what every cooperative-trained lens shares as a blind spot. Default panel is three Claude tiers (Opus + Sonnet + Haiku); intra-Claude diversity is the empirically validated default.",
     accent: "verdict-adversary",
   },
   {
@@ -29,9 +29,9 @@ const pillars = [
 ];
 
 const proofPoints = [
-  { metric: "2", label: "self-audit cycles run; both surfaced a Critical the adversary alone caught." },
-  { metric: "51", label: "findings filed across the two audits, all settled publicly on xion-testnet-2." },
-  { metric: "<15min", label: "wall time per full review pass: trio + adversary + on-chain settlement." },
+  { metric: "4", label: "self-audit cycles run; the adversary stage caught a Critical the lens trio missed in every one." },
+  { metric: "v0.5.2", label: "current release. Temporal lens, tribunal history, and the trajectory PBT scaffold shipped in one day." },
+  { metric: "<15min", label: "wall time per full review pass: lens panel + adversary + on-chain settlement." },
   { metric: "F-NEW-403", label: "adversary's meta-finding that motivated the convergence methodology extension." },
 ];
 ---
@@ -41,7 +41,7 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 pt-20 pb-24">
       <div class="max-w-3xl">
         <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">
-          v0.4.0 · intra-Claude diversity · public ledger
+          v0.5.2 · temporal lens · trajectory PBT · public ledger
         </p>
         <h1 class="font-display text-5xl sm:text-6xl font-semibold text-ink-50 tracking-tight leading-[1.05]">
           Ship LLM code <span class="text-verdict-adversary">without</span> inheriting LLM failure modes.
@@ -156,21 +156,20 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="rounded-2xl border border-ink-700 bg-ink-900/40 p-10 sm:p-14">
         <h2 class="font-display text-3xl font-semibold text-ink-50 tracking-tight max-w-2xl">
-          v0.4.0 ships what the multi-adversary data points at.
+          v0.5 closes the longitudinal gap.
         </h2>
         <p class="mt-4 text-ink-300 max-w-2xl leading-relaxed">
-          P-multi-adversary ran four adversaries — Opus, Sonnet, Haiku, and a cross-family Qwen — against
-          the v0.3.4 diff. <strong>H1 (cross-family additive diversity): refuted</strong> — Qwen produced
-          zero unique findings the Claudes hadn't already raised.
-          <strong>H2 (intra-family disagreement): confirmed</strong> — Opus said BREAKS, Sonnet said
-          INDETERMINATE, Haiku said SURVIVES on the same input, and the most novel finding of the panel
-          (F-OPUS-004, a Unicode bypass) came from intra-Claude diversity, not cross-family. v0.4.0
-          promotes that empirical winner to the default panel: opus + sonnet + haiku instead of overlapping
-          opus/sonnet variants.
+          The three default lenses each review a component well. The seams between components — the integral of
+          small per-cycle edits that defines memory, identity, drift — go unreviewed. Auditing
+          <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">session-essence</code> made this concrete: 11 of the adversary's findings lived in the
+          seams. v0.5 adds an opt-in fourth lens for longitudinal systems, a <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">tribunal history</code>
+          primitive that gives the lens trajectory access, and a <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">trajectory.Property</code> PBT scaffold
+          that turns lens findings into executable rapid tests with finding-ID-traceable counterexamples.
+          <strong>Identify → read → enforce.</strong> The lens the methodology was missing.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="/audits/p-v033-audit" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
-            Read the second audit →
+          <a href="/docs/temporal-lens" class="px-5 py-2.5 rounded-md bg-verdict-adversary text-ink-950 font-medium hover:bg-verdict-approve transition-colors">
+            Read the temporal lens doc →
           </a>
           <a href="/audits" class="px-5 py-2.5 rounded-md border border-ink-700 hover:border-ink-500 text-ink-100 hover:text-ink-50 transition-colors">
             All audits
