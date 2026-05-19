@@ -128,35 +128,35 @@ func loadPlanLedger(projectRoot, planID string) ([]*ledger.Finding, []*ledger.Re
 // Fields are explicit (not embedded slices of internal types) so the
 // schema stays stable across internal refactors.
 type Timeline struct {
-	PlanID         string             `json:"plan_id"`
-	Rounds         []TimelineRound    `json:"rounds"`
-	SignedFindings []TimelineFinding  `json:"signed_findings"`
-	Resolutions    []TimelineResolve  `json:"resolutions"`
-	Summary        TimelineSummary    `json:"summary"`
+	PlanID         string            `json:"plan_id"`
+	Rounds         []TimelineRound   `json:"rounds"`
+	SignedFindings []TimelineFinding `json:"signed_findings"`
+	Resolutions    []TimelineResolve `json:"resolutions"`
+	Summary        TimelineSummary   `json:"summary"`
 }
 
 // TimelineRound is the per-round projection of converge.RoundResult.
 // Includes only the fields the lens and the operator actually need.
 type TimelineRound struct {
-	Round          int       `json:"round"`
-	StartedAt      time.Time `json:"started_at"`
-	CompletedAt    time.Time `json:"completed_at"`
-	DurationSec    float64   `json:"duration_sec"`
-	OverallVerdict string    `json:"overall_verdict"`
-	PanelMembers   []string  `json:"panel_members"`
-	RotationAxis   string    `json:"rotation_axis,omitempty"`
+	Round          int            `json:"round"`
+	StartedAt      time.Time      `json:"started_at"`
+	CompletedAt    time.Time      `json:"completed_at"`
+	DurationSec    float64        `json:"duration_sec"`
+	OverallVerdict string         `json:"overall_verdict"`
+	PanelMembers   []string       `json:"panel_members"`
+	RotationAxis   string         `json:"rotation_axis,omitempty"`
 	FindingsByLens map[string]int `json:"findings_by_severity"`
-	NovelFindings  int       `json:"novel_findings"`
-	CarriedForward int       `json:"carried_forward"`
-	TokenCost      int       `json:"token_cost,omitempty"`
-	PatchAuthored  bool      `json:"patch_authored,omitempty"`
-	PatchApplied   bool      `json:"patch_applied,omitempty"`
-	PatchRefused   bool      `json:"patch_refused,omitempty"`
-	VerifyRan      bool      `json:"verify_ran,omitempty"`
-	VerifyPassed   bool      `json:"verify_passed,omitempty"`
-	Stopped        bool      `json:"stopped,omitempty"`
-	StopReason     string    `json:"stop_reason,omitempty"`
-	StopCriterion  string    `json:"stop_criterion,omitempty"`
+	NovelFindings  int            `json:"novel_findings"`
+	CarriedForward int            `json:"carried_forward"`
+	TokenCost      int            `json:"token_cost,omitempty"`
+	PatchAuthored  bool           `json:"patch_authored,omitempty"`
+	PatchApplied   bool           `json:"patch_applied,omitempty"`
+	PatchRefused   bool           `json:"patch_refused,omitempty"`
+	VerifyRan      bool           `json:"verify_ran,omitempty"`
+	VerifyPassed   bool           `json:"verify_passed,omitempty"`
+	Stopped        bool           `json:"stopped,omitempty"`
+	StopReason     string         `json:"stop_reason,omitempty"`
+	StopCriterion  string         `json:"stop_criterion,omitempty"`
 }
 
 // TimelineFinding projects ledger.Finding to the timeline shape.
@@ -183,16 +183,16 @@ type TimelineResolve struct {
 // TimelineSummary is a high-level rollup the lens can read without
 // walking every round.
 type TimelineSummary struct {
-	RoundCount       int            `json:"round_count"`
-	SignedCount      int            `json:"signed_count"`
-	ResolutionCount  int            `json:"resolution_count"`
-	OpenFindings     int            `json:"open_findings"`
-	UniqueClaims     int            `json:"unique_claims"`
-	CarriedForward   int            `json:"carried_forward"`
-	FinalVerdict     string         `json:"final_verdict,omitempty"`
-	StoppedAtRound   int            `json:"stopped_at_round,omitempty"`
-	StopCriterion    string         `json:"stop_criterion,omitempty"`
-	OutcomesByKind   map[string]int `json:"outcomes_by_kind,omitempty"`
+	RoundCount      int            `json:"round_count"`
+	SignedCount     int            `json:"signed_count"`
+	ResolutionCount int            `json:"resolution_count"`
+	OpenFindings    int            `json:"open_findings"`
+	UniqueClaims    int            `json:"unique_claims"`
+	CarriedForward  int            `json:"carried_forward"`
+	FinalVerdict    string         `json:"final_verdict,omitempty"`
+	StoppedAtRound  int            `json:"stopped_at_round,omitempty"`
+	StopCriterion   string         `json:"stop_criterion,omitempty"`
+	OutcomesByKind  map[string]int `json:"outcomes_by_kind,omitempty"`
 }
 
 // buildTimeline projects the raw round + ledger data into the
