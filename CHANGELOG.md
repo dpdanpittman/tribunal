@@ -14,6 +14,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.3] — 2026-05-19
+
+The contract-PBT release. The Go side picked up property-based testing in v0.4.4 (rapid for ledger / dispatch / converge); the Rust contract `tribunal-reputation` was still spot-check coverage. v0.5.3 closes that gap by adding proptest-driven invariant checks against cw-multi-test instances of the contract. The contract version bumps 0.3.0 → 0.4.0 (additive: new dev-dep + new test file; no on-chain behavior change).
+
+### Added
+
+- **`contracts/tribunal-reputation/tests/property_tests.rs`** — three property tests against a `cw-multi-test` App with the contract instantiated fresh per case. Each property runs proptest's default 256 cases:
+  - **A. Commit → resolve(TruePositive) roundtrip** pins the reputation math: pre-balance B → commit debits stake → resolve(TP) returns stake plus reward (`stake × outcome_reward_multiplier`). For any (stake, severity), final balance equals `B + stake × reward_mult`.
+  - **B. Commit → resolve(FalsePositive) roundtrip** pins the slashing path: commit-time debit stays; final balance equals `B − stake`. No reward paid, no stake returned.
+  - **C. Leaderboard query is sorted descending by balance** regardless of agent registration order or the per-agent balance trajectories. The kind of invariant that breaks silently if cw-storage-plus's iteration order changes upstream; PBT pins it now.
+
+- **`proptest = "1"`** added to `[dev-dependencies]`. No runtime cost.
+
+### Strategy generators
+
+- Stakes drawn from `1..=64` — wide enough to hit boundaries (stake ≈ balance, stake × mult > balance) while keeping cw-multi-test cheap per case.
+- Severities sampled uniformly from `{critical, warning, suggestion}` so the property doesn't accidentally fix to one ladder.
+- Per-agent vectors in property C drawn from `1..=5` — small enough that 256 cases run quickly, large enough to exercise sort ordering with non-trivial agent counts.
+
+### What's NOT covered yet (out of scope)
+
+- Stale / Indeterminate resolution outcomes (the property suite covers the load-bearing TP and FP paths; the other two are tested by spot-check in `tests/integration.rs`).
+- Rotation flow — agent registration → retirement → re-registration. Out of scope for v0.5.3; worth a follow-up property if rotation semantics get extended.
+- Batch operations (`CommitFindingBatch` / `ResolveFindingBatch`) — spot-checked in integration tests, not yet property-tested. A follow-up would generate random batches and assert batch behavior equals N independent applies.
+
+### Test runtime
+
+3 properties × 256 cases = 768 total contract instantiations + commit/resolve cycles. ~11.6s on a developer laptop. Well within the threshold where it stays runnable on every `cargo test` invocation.
+
 ## [0.5.2] — 2026-05-18
 
 The trajectory-PBT release (M3 of ADR-0003, closing the v0.5 arc). The temporal lens identifies state-machine properties; v0.5.2 ships the scaffold + worked example that turns those findings from diagnostic to enforceable. When the lens files `category: temporal_invariant`, the operator (or an implementer agent) encodes the property as a `trajectory.Property` and `rapid`'s stateful engine drives random operation sequences against the system under test, shrinking any failing trajectory to a minimal counterexample.
