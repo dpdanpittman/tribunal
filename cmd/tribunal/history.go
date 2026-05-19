@@ -32,8 +32,9 @@ import (
 // the convergence dir or the ledger.
 func newHistoryCmd() *cobra.Command {
 	var (
-		planID string
-		format string
+		planID       string
+		trajectoryID string
+		format       string
 	)
 	cmd := &cobra.Command{
 		Use:   "history",
@@ -43,7 +44,14 @@ func newHistoryCmd() *cobra.Command {
   .tribunal/convergence/<plan>/round-NNNN.json   per-round results
   .tribunal/ledger.jsonl                         signed findings + resolutions
 
-and emits a structured timeline filtered to the named plan.
+and emits a structured timeline filtered to either a plan (--plan) or a
+trajectory (--trajectory, v0.5.6+). Exactly one is required.
+
+Plan-scoped queries surface convergence rounds + signed findings/
+resolutions whose plan_id matches. Trajectory-scoped queries (used by
+the temporal lens for cross-plan findings) surface only the signed
+trajectory-scoped entries; convergence rounds are by definition
+per-plan and don't apply to a trajectory.
 
 Text format (default) is for human inspection. JSON format is the
 canonical machine input for the temporal lens (v0.5.0+) and other
@@ -51,29 +59,40 @@ trajectory-aware tools.
 
 When the convergence dir is absent (single-pass review, no converge run),
 only the signed-ledger view is emitted. When the ledger is absent, only
-the convergence rounds are emitted. Empty plans return an empty timeline
-with exit 0 — absence is not an error.`,
+the convergence rounds are emitted. Empty queries return an empty
+timeline with exit 0 — absence is not an error.`,
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if planID == "" {
-				return errors.New("--plan is required")
+			if planID == "" && trajectoryID == "" {
+				return errors.New("one of --plan or --trajectory is required")
+			}
+			if planID != "" && trajectoryID != "" {
+				return errors.New("--plan and --trajectory are mutually exclusive")
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
 
-			rounds, err := converge.LoadHistory(cwd, planID)
-			if err != nil {
-				return fmt.Errorf("load convergence history: %w", err)
+			var tl *Timeline
+			if planID != "" {
+				rounds, err := converge.LoadHistory(cwd, planID)
+				if err != nil {
+					return fmt.Errorf("load convergence history: %w", err)
+				}
+				findings, resolutions, err := loadPlanLedger(cwd, planID)
+				if err != nil {
+					return fmt.Errorf("load signed ledger: %w", err)
+				}
+				tl = buildTimeline(planID, rounds, findings, resolutions)
+			} else {
+				// trajectory-scoped: no convergence rounds (they're per-plan)
+				findings, resolutions, err := loadTrajectoryLedger(cwd, trajectoryID)
+				if err != nil {
+					return fmt.Errorf("load signed ledger: %w", err)
+				}
+				tl = buildTrajectoryTimeline(trajectoryID, findings, resolutions)
 			}
-
-			findings, resolutions, err := loadPlanLedger(cwd, planID)
-			if err != nil {
-				return fmt.Errorf("load signed ledger: %w", err)
-			}
-
-			tl := buildTimeline(planID, rounds, findings, resolutions)
 
 			switch format {
 			case "json":
@@ -86,8 +105,58 @@ with exit 0 — absence is not an error.`,
 		},
 	}
 	cmd.Flags().StringVar(&planID, "plan", "", "Plan ID (matches .tribunal/plans/<id>/ + on-chain plan_id)")
+	cmd.Flags().StringVar(&trajectoryID, "trajectory", "", "Trajectory ID for cross-plan findings (v0.5.6+). Mutex with --plan.")
 	cmd.Flags().StringVar(&format, "format", "text", "Output format: text | json")
 	return cmd
+}
+
+// loadTrajectoryLedger (v0.5.6+) mirrors loadPlanLedger but filters by
+// TrajectoryID instead of PlanID. Used by `tribunal history --trajectory
+// <id>` for cross-plan findings.
+func loadTrajectoryLedger(projectRoot, trajectoryID string) ([]*ledger.Finding, []*ledger.Resolution, error) {
+	path := ledger.DefaultPath(projectRoot)
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil, nil, nil
+	}
+	l := ledger.New(path)
+	findings, resolutions, err := l.All()
+	if err != nil {
+		return nil, nil, err
+	}
+	var fOut []*ledger.Finding
+	for _, f := range findings {
+		if f.TrajectoryID == trajectoryID && trajectoryID != "" {
+			fOut = append(fOut, f)
+		}
+	}
+	var rOut []*ledger.Resolution
+	for _, r := range resolutions {
+		if r.TrajectoryID == trajectoryID && trajectoryID != "" {
+			rOut = append(rOut, r)
+		}
+	}
+	sort.SliceStable(fOut, func(i, j int) bool { return fOut[i].Timestamp.Before(fOut[j].Timestamp) })
+	sort.SliceStable(rOut, func(i, j int) bool { return rOut[i].Timestamp.Before(rOut[j].Timestamp) })
+	return fOut, rOut, nil
+}
+
+// buildTrajectoryTimeline projects trajectory-scoped findings into the
+// same Timeline shape that plan-scoped queries use. Rounds is always
+// empty (convergence is per-plan). The PlanID field in the output is
+// reused to surface the trajectory ID — operators reading text output
+// see "Plan: <trajectory-name>" but readers of the JSON should rely on
+// the TrajectoryID field once that lands in the Timeline schema.
+//
+// Schema note (v0.5.6): we intentionally don't bump the Timeline JSON
+// shape this version. Trajectory queries reuse the existing schema with
+// the trajectory's name appearing in plan_id. v0.5.7+ may split out a
+// dedicated trajectory_id field on the Timeline struct once external
+// consumers of the json format firm up.
+func buildTrajectoryTimeline(trajectoryID string, findings []*ledger.Finding, resolutions []*ledger.Resolution) *Timeline {
+	// Reuse the plan-scoped builder; the trajectory ID flows into the
+	// PlanID field at the projection level.
+	tl := buildTimeline("trajectory:"+trajectoryID, nil, findings, resolutions)
+	return tl
 }
 
 // loadPlanLedger reads the default signed ledger and filters findings +

@@ -684,7 +684,16 @@ func (s *Sync) SyncAll(ctx context.Context, lg *ledger.Ledger) ([]*SyncResult, e
 	seenPlan := map[string]struct{}{}
 	planFindings := map[string][]*ledger.Finding{}
 	planResolutions := map[string][]*ledger.Resolution{}
+	// v0.5.6: trajectory findings (TrajectoryID set, PlanID empty) stay
+	// local-only. Skip them at the SyncAll grouping step so we never try
+	// to submit an empty-plan_id batch.
+	skippedTrajectoryFindings := 0
+	skippedTrajectoryResolutions := 0
 	for _, f := range findings {
+		if f.PlanID == "" && f.TrajectoryID != "" {
+			skippedTrajectoryFindings++
+			continue
+		}
 		if _, ok := seenPlan[f.PlanID]; !ok {
 			seenPlan[f.PlanID] = struct{}{}
 			planOrder = append(planOrder, f.PlanID)
@@ -692,11 +701,22 @@ func (s *Sync) SyncAll(ctx context.Context, lg *ledger.Ledger) ([]*SyncResult, e
 		planFindings[f.PlanID] = append(planFindings[f.PlanID], f)
 	}
 	for _, r := range resolutions {
+		if r.PlanID == "" && r.TrajectoryID != "" {
+			skippedTrajectoryResolutions++
+			continue
+		}
 		if _, ok := seenPlan[r.PlanID]; !ok {
 			seenPlan[r.PlanID] = struct{}{}
 			planOrder = append(planOrder, r.PlanID)
 		}
 		planResolutions[r.PlanID] = append(planResolutions[r.PlanID], r)
+	}
+	if skippedTrajectoryFindings+skippedTrajectoryResolutions > 0 {
+		// Best-effort surfacing — operator should know auxiliary local-only
+		// state exists. Trajectory findings settle locally; chain settlement
+		// is plan-scoped only until the contract grows trajectory support.
+		fmt.Fprintf(os.Stderr, "chain sync: skipped %d trajectory findings + %d trajectory resolutions (local-only by design)\n",
+			skippedTrajectoryFindings, skippedTrajectoryResolutions)
 	}
 
 	var out []*SyncResult

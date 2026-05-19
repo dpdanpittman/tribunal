@@ -120,6 +120,39 @@ Worked example: `examples/trajectory-portrait/` — a session-essence-flavoured 
 
 When the system under audit is sensitive enough that an executable test is too risky to land in CI directly (e.g., it would require disabling a production safety check to exercise the bad path), the lens should still file the `temporal_invariant` finding — the operator can decide whether to encode it now, defer to a separate fixture repo, or hand it to a Tribunal implementer agent under the convergence loop.
 
+## Filing cross-plan findings (v0.5.6+)
+
+Some longitudinal observations don't belong to any single plan:
+
+- "The portrait has drifted across the last 6 audit cycles"
+- "Defect class X recurred in P-001, P-003, and P-005 despite being marked TruePositive each time"
+- "The implementer's reputation has trended down across the last N plans"
+
+These are **trajectory-scoped findings**: they belong to a logical sequence of plans the lens audits as a whole, not to any one of them. File them with `category: temporal_invariant` (or another `temporal_*` category) AND set `trajectory_id` instead of `plan_id`. The ledger schema (v0.5.6+) supports both shapes via the `exactly-one-of(plan_id, trajectory_id)` constraint.
+
+```go
+import "github.com/dpdanpittman/tribunal/internal/ledger"
+
+f := ledger.NewTrajectoryFinding(
+    "F-TRAJ-001",                                    // findingID
+    "session-essence",                               // trajectoryID — pick a stable name; the operator's audit_axes anchor it
+    keypair,
+    "tribunal-reviewer-temporal",                    // your agent label
+    ledger.SeverityCritical,
+    ledger.CategoryTemporalStateMismatch,
+    "<sha256 of claim text>",
+    "<URI to evidence>",
+)
+f.Sign(keypair)
+ledger.Append(f)
+```
+
+Query trajectory-scoped findings via `tribunal history --trajectory <id> [--format json]`. The output uses the same Timeline schema as plan-scoped queries (`plan_id` field carries `trajectory:<id>` for clarity).
+
+**Chain settlement note:** trajectory findings stay **local-only** until the contract grows trajectory-scoped storage. `tribunal chain sync` skips them with a log line indicating count. The reputation impact lives in the local ledger; it just doesn't propagate to the public xion-testnet-2 ledger until the contract supports it. For now: trajectory findings are diagnostic + executable-test-traceable, not on-chain settled.
+
+**When NOT to use trajectory_id:** if your finding really IS about a specific plan (even one that includes "this happened over many rounds within the plan"), use `plan_id`. Reserve trajectory_id for observations whose actual unit of measurement is the sequence-of-plans itself.
+
 ## How to file findings
 
 Each finding has:

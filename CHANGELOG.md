@@ -14,6 +14,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.6] — 2026-05-19
+
+Cross-plan findings. The temporal lens (v0.5.0) identifies properties that span many plans — portrait drift across N audit cycles, defect-class recurrence, implementer-reputation trends. The ledger's plan_id-keyed schema couldn't natively represent those; v0.5.6 closes the gap with a `trajectory_id` field and an `exactly-one-of(plan_id, trajectory_id)` constraint at the signing layer.
+
+### Added
+
+- **`ledger.Finding.TrajectoryID`** + **`ledger.Resolution.TrajectoryID`** — new `json:"trajectory_id,omitempty"` field on both types. Backward-compatible: existing entries have empty TrajectoryID → omitted from JSON → existing signatures still verify byte-identically.
+- **`ledger.NewTrajectoryFinding`** + **`ledger.NewTrajectoryResolution`** — constructors for trajectory-scoped entries. Mirror the plan-scoped constructors with a `trajectoryID` argument instead of `planID`. `Round=0` by convention (trajectory findings aren't per-round).
+- **Exactly-one-of validation in `SigningPayload`** — Finding/Resolution must have either `plan_id` or `trajectory_id` set, never both, never neither. Returns a clear error otherwise. Enforced at signing time so malformed entries never reach the ledger.
+- **`tribunal history --trajectory <id>`** flag — parallel to `--plan`. Mutex-exclusive. Loads ledger entries scoped to the trajectory, projects them into the existing Timeline schema (with `plan_id` in output carrying `trajectory:<id>` for clarity).
+- **`agents/tribunal-reviewer-temporal.md`** — new "Filing cross-plan findings" section with code skeleton + decision guidance (when trajectory_id vs plan_id).
+
+### Changed
+
+- **`chain.Sync.SyncAll`** filters out trajectory findings/resolutions before grouping by plan_id. Surfaces a stderr count line when any are skipped (`"chain sync: skipped N trajectory findings + M trajectory resolutions (local-only by design)"`). Local-only by design — the contract doesn't have trajectory-scoped storage yet, so settlement stays plan-only. Trajectory findings remain in the local ledger; their reputation impact is computed locally but not propagated to xion-testnet-2.
+
+### Test coverage
+
+- `TestLoadTrajectoryLedger_FiltersByTrajectoryID` — mixed plan-scoped + trajectory-scoped ledger; each filter returns its scope cleanly.
+- `TestFinding_ExactlyOneOfPlanOrTrajectory` — pins the validation: both-set / neither-set fails; either-alone succeeds.
+
+### Schema note
+
+The Timeline JSON output reuses the existing schema with `plan_id="trajectory:<id>"` for trajectory queries. v0.5.7+ may add a dedicated `trajectory_id` field on the Timeline struct once external consumers of the JSON format firm up. Kept it backward-compatible for now so existing temporal-lens prompts that already consume `--plan` output don't have to re-learn the shape.
+
+### Out of scope
+
+- **Contract-side trajectory settlement.** The Rust contract still keys findings by `(plan_id, finding_id)`. Adding `MsgRecordTrajectoryFinding` + a parallel storage Map is a contract version bump — deferred until real-world usage proves the need. For now: trajectory findings are local-audit + executable-test-traceable, not on-chain settled.
+- **Resolution-scope mismatch detection.** A Resolution with `plan_id="P-001"` could theoretically be filed against a Finding with `trajectory_id="traj-X"`. The ledger doesn't index Findings, so cross-scope misalignment isn't caught at signing time. Trust the local lens / operator to file matching scopes; revisit if real audits surface a bug.
+
 ## [0.5.5] — 2026-05-19
 
 Auto on-chain registration for `tribunal chain sync`. Closes the manual `tribunal chain register <label>`-per-agent step that has been required before any new agent's ledger entries could settle. The convergence loop auto-creates implementer + verifier keypairs locally (v0.4.5); now those agents can land on-chain in the same `chain sync` invocation that flushes their findings — no separate operator step.

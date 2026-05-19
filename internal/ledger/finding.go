@@ -102,25 +102,37 @@ const (
 // to clawpatch's own store. Empty on findings filed by skill-trio or
 // adversary agents; readers must tolerate its absence on legacy entries.
 type Finding struct {
-	Kind        Kind      `json:"kind"`
-	FindingID   string    `json:"finding_id"`
-	PlanID      string    `json:"plan_id"`
-	Round       int       `json:"round"`
-	AgentPubkey string    `json:"agent_pubkey"`
-	AgentLabel  string    `json:"agent_label"`
-	Severity    Severity  `json:"severity"`
-	Category    Category  `json:"category"`
-	ClaimHash   string    `json:"claim_hash"`
-	ClaimURI    string    `json:"claim_uri"`
-	Stake       int       `json:"stake"`
-	Timestamp   time.Time `json:"timestamp"`
-	Signature   string    `json:"signature"`
-	ClawpatchID string    `json:"clawpatch_id,omitempty"`
+	Kind      Kind   `json:"kind"`
+	FindingID string `json:"finding_id"`
+	// PlanID anchors the finding to a single plan under .tribunal/plans/.
+	// Empty when TrajectoryID is set (v0.5.6+ cross-plan findings).
+	PlanID string `json:"plan_id"`
+	// TrajectoryID (v0.5.6+) is set when the finding spans many plans —
+	// e.g., a temporal-lens finding about portrait drift across the last
+	// N audit cycles. Exactly one of PlanID and TrajectoryID is non-empty;
+	// the SigningPayload + Verify enforce this. Chain sync skips
+	// trajectory findings (settlement is plan-scoped on-chain only;
+	// trajectory findings stay local until the contract grows trajectory
+	// support).
+	TrajectoryID string    `json:"trajectory_id,omitempty"`
+	Round        int       `json:"round"`
+	AgentPubkey  string    `json:"agent_pubkey"`
+	AgentLabel   string    `json:"agent_label"`
+	Severity     Severity  `json:"severity"`
+	Category     Category  `json:"category"`
+	ClaimHash    string    `json:"claim_hash"`
+	ClaimURI     string    `json:"claim_uri"`
+	Stake        int       `json:"stake"`
+	Timestamp    time.Time `json:"timestamp"`
+	Signature    string    `json:"signature"`
+	ClawpatchID  string    `json:"clawpatch_id,omitempty"`
 }
 
-// NewFinding constructs a Finding with sensible defaults: severity-based
-// stake, current UTC timestamp, and Kind set to KindFinding. The caller
-// must still call Sign before persisting.
+// NewFinding constructs a plan-scoped Finding with sensible defaults:
+// severity-based stake, current UTC timestamp, and Kind set to KindFinding.
+// The caller must still call Sign before persisting. For findings that
+// span many plans (temporal-lens trajectory observations), use
+// NewTrajectoryFinding instead.
 func NewFinding(findingID, planID string, round int, kp *agent.Keypair, agentLabel string, sev Severity, cat Category, claimHash, claimURI string) *Finding {
 	return &Finding{
 		Kind:        KindFinding,
@@ -138,13 +150,42 @@ func NewFinding(findingID, planID string, round int, kp *agent.Keypair, agentLab
 	}
 }
 
+// NewTrajectoryFinding (v0.5.6+) constructs a Finding scoped to a
+// trajectory (a logical sequence of plans the temporal lens audits as a
+// whole). PlanID stays empty. Round=0 by convention since trajectory
+// findings don't belong to any single round. Chain sync skips trajectory
+// findings; they live local-only until the contract grows trajectory-
+// scoped settlement.
+func NewTrajectoryFinding(findingID, trajectoryID string, kp *agent.Keypair, agentLabel string, sev Severity, cat Category, claimHash, claimURI string) *Finding {
+	return &Finding{
+		Kind:         KindFinding,
+		FindingID:    findingID,
+		TrajectoryID: trajectoryID,
+		Round:        0,
+		AgentPubkey:  kp.PublicKeyString(),
+		AgentLabel:   agentLabel,
+		Severity:     sev,
+		Category:     cat,
+		ClaimHash:    claimHash,
+		ClaimURI:     claimURI,
+		Stake:        sev.DefaultStake(),
+		Timestamp:    time.Now().UTC(),
+	}
+}
+
 // SigningPayload returns the canonical bytes signed by the agent.
 // Determinism: Go's encoding/json marshals struct fields in declaration
 // order, and Finding contains no maps. Two callers with the same Finding
-// data always produce byte-identical payloads.
+// data always produce byte-identical payloads. Validation enforces
+// exactly-one-of(PlanID, TrajectoryID).
 func (f *Finding) SigningPayload() ([]byte, error) {
 	if !f.Severity.IsValid() {
 		return nil, fmt.Errorf("finding: invalid severity %q", f.Severity)
+	}
+	hasPlan := f.PlanID != ""
+	hasTrajectory := f.TrajectoryID != ""
+	if hasPlan == hasTrajectory {
+		return nil, fmt.Errorf("finding: exactly one of plan_id or trajectory_id must be set (got plan_id=%q, trajectory_id=%q)", f.PlanID, f.TrajectoryID)
 	}
 	cp := *f
 	cp.Signature = ""

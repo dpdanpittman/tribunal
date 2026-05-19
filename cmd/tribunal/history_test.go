@@ -209,3 +209,103 @@ func TestLoadPlanLedger_MissingLedger(t *testing.T) {
 			len(findings), len(resolutions))
 	}
 }
+
+// TestLoadTrajectoryLedger_FiltersByTrajectoryID (v0.5.6) covers the
+// mirror of TestLoadPlanLedger_FiltersByPlanID for the new trajectory-
+// scoped query. A ledger with mixed plan-scoped + trajectory-scoped
+// entries should return only the requested trajectory's items via
+// loadTrajectoryLedger, and only the plan's items via loadPlanLedger.
+func TestLoadTrajectoryLedger_FiltersByTrajectoryID(t *testing.T) {
+	dir := t.TempDir()
+	ledgerPath := filepath.Join(dir, ".tribunal", "ledger.jsonl")
+	if err := os.MkdirAll(filepath.Dir(ledgerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Three entries: one plan-scoped, one trajectory-scoped "session-essence",
+	// one trajectory-scoped "tribunal-self-audits". As raw JSON lines so the
+	// test doesn't depend on signing infra.
+	lines := []string{
+		`{"kind":"finding","finding_id":"F-PLAN","plan_id":"P-keep","round":1,"agent_pubkey":"","agent_label":"adv","severity":"warning","category":"shared_blind_spot","claim_hash":"h1","claim_uri":"","stake":1,"timestamp":"2026-05-18T00:00:00Z","signature":""}`,
+		`{"kind":"finding","finding_id":"F-SE","plan_id":"","trajectory_id":"session-essence","round":0,"agent_pubkey":"","agent_label":"adv","severity":"critical","category":"temporal_state_mismatch","claim_hash":"h2","claim_uri":"","stake":1,"timestamp":"2026-05-18T00:01:00Z","signature":""}`,
+		`{"kind":"finding","finding_id":"F-SELF","plan_id":"","trajectory_id":"tribunal-self-audits","round":0,"agent_pubkey":"","agent_label":"adv","severity":"warning","category":"temporal_state_mismatch","claim_hash":"h3","claim_uri":"","stake":1,"timestamp":"2026-05-18T00:02:00Z","signature":""}`,
+	}
+	if err := os.WriteFile(ledgerPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// loadTrajectoryLedger("session-essence") should return only F-SE.
+	findings, _, err := loadTrajectoryLedger(dir, "session-essence")
+	if err != nil {
+		t.Fatalf("loadTrajectoryLedger: %v", err)
+	}
+	if len(findings) != 1 || findings[0].FindingID != "F-SE" {
+		t.Errorf("expected only F-SE for trajectory=session-essence, got %+v", findings)
+	}
+
+	// loadPlanLedger("P-keep") should return only F-PLAN — trajectory
+	// entries don't contaminate plan-scoped queries.
+	planFindings, _, err := loadPlanLedger(dir, "P-keep")
+	if err != nil {
+		t.Fatalf("loadPlanLedger: %v", err)
+	}
+	if len(planFindings) != 1 || planFindings[0].FindingID != "F-PLAN" {
+		t.Errorf("expected only F-PLAN for plan=P-keep, got %+v", planFindings)
+	}
+
+	// loadTrajectoryLedger("nonexistent") should return zero entries
+	// (no error).
+	noFindings, _, err := loadTrajectoryLedger(dir, "does-not-exist")
+	if err != nil {
+		t.Fatalf("loadTrajectoryLedger nonexistent: %v", err)
+	}
+	if len(noFindings) != 0 {
+		t.Errorf("expected zero findings for nonexistent trajectory, got %d", len(noFindings))
+	}
+}
+
+// TestFinding_ExactlyOneOfPlanOrTrajectory (v0.5.6) pins the validation
+// at the signing layer: a Finding with both plan_id and trajectory_id
+// set, or neither, must fail to sign.
+func TestFinding_ExactlyOneOfPlanOrTrajectory(t *testing.T) {
+	// We don't need to actually sign — just call SigningPayload and
+	// confirm the validation error.
+	both := &ledger.Finding{
+		Kind:         ledger.KindFinding,
+		FindingID:    "F-bad",
+		PlanID:       "P-001",
+		TrajectoryID: "traj-001",
+		Severity:     ledger.SeverityWarning,
+	}
+	if _, err := both.SigningPayload(); err == nil {
+		t.Error("expected error when both plan_id and trajectory_id are set, got nil")
+	}
+
+	neither := &ledger.Finding{
+		Kind:      ledger.KindFinding,
+		FindingID: "F-bad",
+		Severity:  ledger.SeverityWarning,
+	}
+	if _, err := neither.SigningPayload(); err == nil {
+		t.Error("expected error when neither plan_id nor trajectory_id is set, got nil")
+	}
+
+	planOnly := &ledger.Finding{
+		Kind:      ledger.KindFinding,
+		FindingID: "F-good-plan",
+		PlanID:    "P-001",
+		Severity:  ledger.SeverityWarning,
+	}
+	if _, err := planOnly.SigningPayload(); err != nil {
+		t.Errorf("plan-only finding should sign OK, got: %v", err)
+	}
+
+	trajectoryOnly := &ledger.Finding{
+		Kind:         ledger.KindFinding,
+		FindingID:    "F-good-traj",
+		TrajectoryID: "traj-001",
+		Severity:     ledger.SeverityWarning,
+	}
+	if _, err := trajectoryOnly.SigningPayload(); err != nil {
+		t.Errorf("trajectory-only finding should sign OK, got: %v", err)
+	}
+}
