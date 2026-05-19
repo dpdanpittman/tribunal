@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -169,6 +170,7 @@ func newChainRegisterCmd() *cobra.Command {
 
 func newChainSyncCmd() *cobra.Command {
 	var planID string
+	var autoRegister bool
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Batch-commit local findings + resolutions to the contract",
@@ -176,7 +178,12 @@ func newChainSyncCmd() *cobra.Command {
 
 Without --plan it syncs every plan in the ledger, grouped per plan_id.
 With --plan it syncs only the specified plan. Queued real-time commits
-for the plan are drained into the same transaction.`,
+for the plan are drained into the same transaction.
+
+With --auto-register, any agent referenced in the ledger entries about
+to be synced that isn't yet on-chain is registered first (one tx per
+missing agent, idempotent on re-run). Off by default — operator opts in
+to let sync mutate the on-chain agent set.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			reg, err := defaultRegistry()
 			if err != nil {
@@ -207,6 +214,27 @@ for the plan are drained into the same transaction.`,
 			if err != nil {
 				return err
 			}
+
+			// v0.5.5: --auto-register submits RegisterAgent for any pubkey
+			// referenced by ledger entries that isn't on-chain yet. Scoped
+			// to entries for the plan being synced when --plan is set, so
+			// over-registration is bounded.
+			if autoRegister {
+				scopedFindings, scopedResolutions := findings, resolutions
+				if planID != "" {
+					scopedFindings, scopedResolutions = filterByPlan(findings, resolutions, planID)
+				}
+				arCtx, arCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				n, err := autoRegisterReferencedAgents(arCtx, client, reg, scopedFindings, scopedResolutions)
+				arCancel()
+				if err != nil {
+					return fmt.Errorf("auto-register: %w", err)
+				}
+				if n > 0 {
+					fmt.Printf("auto-registration: %d agent(s) added to chain\n", n)
+				}
+			}
+
 			if planID != "" {
 				ctx, cancel := context.WithTimeout(context.Background(), chain.SyncBudgetForPlans(1))
 				defer cancel()
@@ -243,7 +271,111 @@ for the plan are drained into the same transaction.`,
 		},
 	}
 	cmd.Flags().StringVar(&planID, "plan", "", "Sync only this plan id")
+	cmd.Flags().BoolVar(&autoRegister, "auto-register", false, "Auto-register any local agent referenced in the ledger that's not yet on-chain (one RegisterAgent tx per missing agent). Idempotent. Off by default.")
 	return cmd
+}
+
+// autoRegisterReferencedAgents ensures every pubkey referenced in the
+// given ledger entries exists on-chain. For each missing one, look up
+// the matching local agent by pubkey, build a RegisterAgent msg, and
+// submit it. Idempotent — already-registered agents are skipped after a
+// single chain query each.
+//
+// Failure modes:
+//   - Pubkey in the ledger but no matching local agent in the registry:
+//     returns an error. Indicates the ledger is from a different operator;
+//     auto-registering an agent whose private key you don't hold is a
+//     no-op for that agent's reputation (they can't sign future findings).
+//   - Chain query error other than "not found": returns the error.
+//     Network / RPC issues should fail loud rather than silently skip
+//     and then have the subsequent sync fail more obscurely.
+//   - Submit failure: returns the error with the agent's label attached.
+func autoRegisterReferencedAgents(
+	ctx context.Context,
+	client *chain.Client,
+	reg *agent.Registry,
+	findings []*ledger.Finding,
+	resolutions []*ledger.Resolution,
+) (int, error) {
+	// Collect unique pubkeys.
+	seen := map[string]struct{}{}
+	for _, f := range findings {
+		if f.AgentPubkey != "" {
+			seen[f.AgentPubkey] = struct{}{}
+		}
+	}
+	for _, r := range resolutions {
+		if r.ResolverPubkey != "" {
+			seen[r.ResolverPubkey] = struct{}{}
+		}
+	}
+
+	// Build local-agent index by pubkey.
+	locals, err := reg.List()
+	if err != nil {
+		return 0, fmt.Errorf("list local registry: %w", err)
+	}
+	byPubkey := map[string]*agent.Agent{}
+	for _, a := range locals {
+		byPubkey[a.Pubkey] = a
+	}
+
+	registered := 0
+	for pubkey := range seen {
+		if _, qerr := client.Agent(ctx, pubkey); qerr == nil {
+			continue // already on-chain
+		} else if !strings.Contains(qerr.Error(), "not found") {
+			return registered, fmt.Errorf("query agent %s: %w", pubkey, qerr)
+		}
+		// Missing on-chain — try to register from local registry.
+		local, ok := byPubkey[pubkey]
+		if !ok {
+			return registered, fmt.Errorf(
+				"pubkey %s referenced in ledger but no local agent matches; "+
+					"ledger may be from a different operator. Skip with --plan or remove the orphan entry.",
+				pubkey,
+			)
+		}
+		kp, err := reg.LoadKeypair(local.Label)
+		if err != nil {
+			return registered, fmt.Errorf("load keypair for %s: %w", local.Label, err)
+		}
+		msg, err := chain.BuildRegisterAgent(kp, local.Label, local.ModelID, local.Role, 0)
+		if err != nil {
+			return registered, fmt.Errorf("build register msg for %s: %w", local.Label, err)
+		}
+		res, err := client.Execute(ctx, msg)
+		if err != nil {
+			return registered, fmt.Errorf("submit register for %s: %w", local.Label, err)
+		}
+		fmt.Printf("✓ auto-registered %s on-chain (txhash: %s)\n", local.Label, res.TxHash)
+		registered++
+	}
+	return registered, nil
+}
+
+// filterByPlan returns the subset of findings + resolutions whose
+// plan_id matches the given target. Used by --auto-register + --plan
+// composition so we don't over-register agents not relevant to the
+// scoped sync.
+func filterByPlan(
+	findings []*ledger.Finding,
+	resolutions []*ledger.Resolution,
+	target string,
+) ([]*ledger.Finding, []*ledger.Resolution) {
+	var fOut []*ledger.Finding
+	var rOut []*ledger.Resolution
+	for _, f := range findings {
+		if f.PlanID == target {
+			fOut = append(fOut, f)
+		}
+	}
+	for _, r := range resolutions {
+		if r.PlanID == target {
+			rOut = append(rOut, r)
+		}
+	}
+	return fOut, rOut
 }
 
 func printSyncResult(r *chain.SyncResult) {

@@ -14,6 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.5] — 2026-05-19
+
+Auto on-chain registration for `tribunal chain sync`. Closes the manual `tribunal chain register <label>`-per-agent step that has been required before any new agent's ledger entries could settle. The convergence loop auto-creates implementer + verifier keypairs locally (v0.4.5); now those agents can land on-chain in the same `chain sync` invocation that flushes their findings — no separate operator step.
+
+### Added
+
+- **`tribunal chain sync --auto-register` flag.** When set, the sync command queries the contract for every agent pubkey referenced in the ledger entries about to flush; for each one that's not on-chain, it builds a `RegisterAgent` execute message from the local registry's matching agent record (label, model_id, role, keypair) and submits it before the batch goes out. Idempotent — re-running with `--auto-register` after everyone's registered is one query per agent and zero new txs.
+
+### Off by default — operator opts in
+
+Auto-registration mutates the on-chain agent set using the operator's wallet for gas. A runaway converge loop with auto-register enabled could submit spurious RegisterAgent txs that burn uxion. Default `false` keeps that failure mode opt-in. Operators who want the convenience flip the flag knowing the trade.
+
+### Implementation notes
+
+- **Scoping respects `--plan`**: when sync is scoped to a single plan, auto-register only considers agents referenced by entries for that plan. Avoids over-registering local agents who happen to exist in the registry but aren't in the current sync's scope.
+- **Failure modes are loud, not silent**: an unknown pubkey (referenced by a ledger entry but with no matching local agent — likely a ledger from a different operator) returns an error rather than silently skipping. Same for non-"not found" chain query errors. Auto-register is supposed to be safe in the happy path and loud in any unexpected one.
+- **Idempotent by query, not by tx**: an already-registered agent is detected via a chain query, never via a duplicate `RegisterAgent` tx that the contract would reject. Cheap to re-run.
+
+### What's NOT auto-registered
+
+The operator's own keypair (the cosmos wallet that signs txs) is not in scope — that's existing chain-level state, not the contract's agent registry. The flag covers Tribunal agents only (implementers, verifiers, adversaries, reviewers, PMs, etc.) — the ed25519 agent keypairs that sign findings + resolutions.
+
+### Re-affirmed: the manual flow still works
+
+`tribunal chain register <label>` is unchanged. Auto-register is purely additive — operators who prefer to register each agent thoughtfully can keep doing that.
+
 ## [0.5.4] — 2026-05-19
 
 Two more contract PBTs — closing the lifecycle and batch coverage gaps v0.5.3 explicitly punted on. Contract bumps 0.4.0 → 0.4.1 (additive: two new property tests; no on-chain behavior change).
