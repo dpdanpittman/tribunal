@@ -89,6 +89,37 @@ When declared:
 
 When not declared, run on the diff alone. The intent doc's silence on artifact paths is a signal that the operator wants spec-only review; respect it.
 
+## Making findings executable (v0.5.2+)
+
+State-machine properties identified by this lens can be made executable rather than diagnostic. When a finding describes an invariant that should hold over any sequence of operations — "no Synthesize pass should drop a load-bearing section," "ledger appends are monotone," "session-essence's portrait sha256 sidecar must match the file after every PreCompact" — file the finding with `category: temporal_invariant` and a clear state-machine description, then point the operator (or an implementer agent) at the trajectory scaffold:
+
+```go
+import "github.com/dpdanpittman/tribunal/trajectory"
+
+func TestPortraitPrunePreservesLoadBearing(t *testing.T) {
+    prop := trajectory.Property{
+        FindingID:   "F-temporal-001",
+        Name:        "portrait-synthesize-preserves-load-bearing",
+        Description: "Synthesize pass must never decrease load-bearing section count.",
+        SetUp:       func(t *rapid.T) trajectory.SUT { /* build initial state */ },
+        Operations:  map[string]func(*rapid.T, trajectory.SUT){
+            "add-load-bearing": func(t *rapid.T, sut trajectory.SUT) { /* ... */ },
+            "synthesize":       func(t *rapid.T, sut trajectory.SUT) { /* ... */ },
+        },
+        Invariants: []trajectory.Invariant{
+            {Name: "load-bearing-monotone", Check: func(t *rapid.T, sut trajectory.SUT) { /* ... */ }},
+        },
+    }
+    trajectory.Run(t, prop)
+}
+```
+
+`rapid` generates random operation sequences; the invariant fires after every operation. Counterexamples are shrunk to the minimal failing trajectory and include the `FindingID`, so a CI failure traces straight back to the finding that motivated the test.
+
+Worked example: `examples/trajectory-portrait/` — a session-essence-flavoured portrait with safe and buggy Synthesize variants. The safe version's Property passes 100 trials in milliseconds; the buggy version's invariant trips after one rapid action.
+
+When the system under audit is sensitive enough that an executable test is too risky to land in CI directly (e.g., it would require disabling a production safety check to exercise the bad path), the lens should still file the `temporal_invariant` finding — the operator can decide whether to encode it now, defer to a separate fixture repo, or hand it to a Tribunal implementer agent under the convergence loop.
+
 ## How to file findings
 
 Each finding has:

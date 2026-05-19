@@ -14,6 +14,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.2] — 2026-05-18
+
+The trajectory-PBT release (M3 of ADR-0003, closing the v0.5 arc). The temporal lens identifies state-machine properties; v0.5.2 ships the scaffold + worked example that turns those findings from diagnostic to enforceable. When the lens files `category: temporal_invariant`, the operator (or an implementer agent) encodes the property as a `trajectory.Property` and `rapid`'s stateful engine drives random operation sequences against the system under test, shrinking any failing trajectory to a minimal counterexample.
+
+### Added
+
+- **`trajectory/` package** (new top-level public package; deliberately not under `internal/` so external repos can import it). Defines `Property` (FindingID + Name + Description + SetUp + Operations + Invariants), `SUT` (`any`), `Invariant` (named check), and `Run(t, property)`. Run wraps `rapid.T.Repeat` with the convention that the empty-key entry is reserved for invariant checking — operations get plain names, invariants are composed and run after every operation.
+- **`Property.validate()`** — fails fast on missing required fields or operations registered under the reserved empty-key, before rapid is invoked. Misconfigurations surface immediately instead of after a long rapid run.
+- **`examples/trajectory-portrait/`** — worked example. A session-essence-flavoured `Portrait` (sections, some marked `LoadBearing`) with two `Synthesize` variants: `SynthesizeSafe` (respects the marker, passes 100 rapid trials in milliseconds) and `SynthesizeBuggy` (drops sections regardless, trips the invariant after one rapid action). The Buggy test is `t.Skip`'d in CI so the suite stays green; operators can un-skip to watch rapid shrink the counterexample. README explains the path from lens-finding → executable test → CI failure that traces back to the finding ID.
+- **Documentation: `agents/tribunal-reviewer-temporal.md` — "Making findings executable" section.** Code skeleton, pointer to the worked example, guidance on when the executable encoding is safe to land directly in CI vs. when to defer to an implementer agent.
+
+### Tests
+
+- `TestProperty_Validate_RequiredFields` covers five validation cases (missing Name / SetUp / Operations / Invariants + reserved empty-key collision).
+- `TestRun_SafeProperty_Passes` exercises the happy path with a counter SUT — 100 rapid trials clean.
+- End-to-end failure behaviour (Run reporting and shrinking a counterexample) is integration-tested by the worked example's Buggy variant rather than re-tested in the scaffold, to keep the unit tests focused on `validate` (the layer that fails fast before rapid is involved). Go's testing package marks parent tests as failed when subtests fail, which makes "this should fail" hard to assert in-process without an exec-and-check harness or a TB mock — both heavier than the worked-example integration check.
+
+### Design notes
+
+- **Scaffold is intentionally thin.** rapid does the heavy lifting; the wrapper standardises (a) named composition of multiple invariants, (b) the convention that empty-key is reserved for invariants, (c) the `FindingID` back-reference. Operators who already know rapid can use `rapid.T.Repeat` directly — `Property` exists to standardise the idiom across temporal tests in different repos.
+- **`SUT any` instead of generics.** Each Property names its own SUT type and asserts inside the Operations / Invariants. Avoids forcing every Property to be generic over its SUT type, which made the API uglier in early sketches without paying for itself in type safety.
+- **No options surface (seed, numTests).** Operators who need them call `rapid.Check` directly. The scaffold targets the common case; the escape hatch is "use rapid raw."
+
+### M3 closes v0.5
+
+The v0.5 arc landed in one day across three releases:
+
+- v0.5.0 — temporal lens M1 (agent + intent schema + dispatch wiring)
+- v0.5.1 — temporal lens M2 (`tribunal history` for trajectory access)
+- v0.5.2 — temporal lens M3 (trajectory PBT scaffold + worked example)
+
+The lens can now: identify longitudinal properties (M1), read the trajectory they live on (M2), and emit findings the operator turns into rapid-driven CI tests (M3).
+
 ## [0.5.1] — 2026-05-18
 
 The trajectory-access release (M2 of ADR-0003). The temporal lens (v0.5.0) audits longitudinal claims; v0.5.1 gives it the primitive it needs to read trajectory data — the full history of a plan's convergence rounds and signed-ledger entries — without ad-hoc filesystem walks. Operators get the same view for inspecting multi-round audits.

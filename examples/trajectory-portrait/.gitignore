@@ -1,0 +1,5 @@
+# rapid's failfile cache. Committed failfiles are valuable for regression
+# coverage; the file generated during one-shot proof-of-failure runs is
+# noise. If you want to commit a specific failfile, force-add it:
+#   git add -f testdata/rapid/TestFoo/TestFoo-<timestamp>.fail
+testdata/
