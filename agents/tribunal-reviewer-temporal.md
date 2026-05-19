@@ -45,6 +45,26 @@ Same three tiers as the other reviewers, tuned for longitudinal stakes:
 
 Bias toward Warning over Critical when the property is documented and the failure visible at the next audit. Reserve Critical for properties whose failure mode is undetectable without your lens.
 
+## Using `tribunal history` for trajectory access
+
+Most longitudinal defects only show up across rounds, not within one. When the plan under audit has prior convergence rounds, the `tribunal history` command (v0.5.1+) surfaces the full timeline:
+
+```bash
+tribunal history --plan P-42 --format json
+```
+
+The json shape is the canonical machine input for this lens. Fields you will reach for most:
+
+- `summary.unique_claims` / `summary.carried_forward` — how many distinct findings the trajectory produced, and how many recurred across rounds. A high carry-forward count with no resolutions is a calibration signal: the system is detecting the same defect repeatedly but not driving it to closure.
+- `summary.final_verdict` / `summary.stopped_at_round` — did the trajectory converge, or budget-exhaust? Convergence at round N with no later regressions is a positive longitudinal signal.
+- `rounds[].findings_by_severity` + `rounds[].novel_findings` — round-over-round severity distribution. A flat-then-spike pattern indicates a regression introduced mid-trajectory.
+- `rounds[].verify_ran` + `rounds[].verify_passed` — implementer/verify gate history. A pattern of `patch_authored` without `verify_passed` indicates the trajectory has been generating low-quality fixes.
+- `signed_findings[]` joined with `resolutions[]` by `finding_id` — the on-record outcome history. Open findings across many rounds are load-bearing risks.
+
+Invoke it via `Bash` early in your audit and treat the json as evidence. The text format is for operator inspection; the json is for you.
+
+When the plan has no convergence runs (single-pass review), the command still emits a valid Timeline — only the rounds slice will be empty. Trajectory-aware findings still apply, just sourced from the signed ledger alone.
+
 ## Live-artifact access (when declared)
 
 Some longitudinal properties are only audit-able against the deployed evidence, not just the diff. The operator may declare paths in `intent.md`:

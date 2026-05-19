@@ -14,6 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.1] — 2026-05-18
+
+The trajectory-access release (M2 of ADR-0003). The temporal lens (v0.5.0) audits longitudinal claims; v0.5.1 gives it the primitive it needs to read trajectory data — the full history of a plan's convergence rounds and signed-ledger entries — without ad-hoc filesystem walks. Operators get the same view for inspecting multi-round audits.
+
+### Added
+
+- **`tribunal history --plan <id>` command** (`cmd/tribunal/history.go`). Emits a structured timeline of a plan: per-round convergence results (loaded from `.tribunal/convergence/<plan>/round-NNNN.json` via the existing `converge.LoadHistory`), the signed-ledger findings + resolutions filtered to the plan, and a high-level summary (round count, unique claims, carry-forward count, final verdict, stop reason).
+- **`--format text|json` flag**. Text is for operators; json is the canonical machine input for the temporal reviewer. Per-round fields include `findings_by_severity`, `novel_findings`, `carried_forward`, `patch_authored` / `patch_applied`, `verify_ran` / `verify_passed`, `stopped` / `stop_criterion`. Summary fields include `unique_claims`, `carried_forward`, `final_verdict`, `stopped_at_round`, `outcomes_by_kind`. Empty slices serialise as `[]`, not `null`, so consumers don't need to handle nil specially.
+- **Documentation update to `agents/tribunal-reviewer-temporal.md`** — a new "Using `tribunal history`" section that explains which json fields the lens should reach for during audit. The lens is expected to invoke `tribunal history` via `Bash` early in its run when a multi-round trajectory exists.
+
+### Read primitives (already present)
+
+- `internal/converge.LoadHistory(projectRoot, planID)` returns `[]RoundResult` sorted ascending by round. Predates v0.5; v0.5.1 only adds a CLI surface on top.
+- `internal/ledger.Ledger.All()` returns all findings + resolutions; v0.5.1's `loadPlanLedger` adds a plan-id filter at the CLI layer.
+
+### Out of scope (still ahead)
+
+- **M3 (v0.5.2)**: stateful PBT via `rapid` — convert temporal-lens findings about state-machine properties into executable trajectory tests.
+- **Cross-plan findings**: still deferred per the v0.5.0 decision; revisit when there's empirical demand from the lens.
+
 ## [0.5.0] — 2026-05-18
 
 The temporal-lens release (M1 of ADR-0003). Tribunal's lens-parallel methodology gains a fourth, opt-in reviewer for systems whose central claim is longitudinal — memory, identity, accumulation, drift, continuity. The first audit of `session-essence` (P-session-essence-audit) surfaced 11 adversary findings the trio missed, all living in the seams between co-designed components. Generalising the observation: when a system's load-bearing property is the integral of small per-cycle changes, the per-component lenses systematically underweight it. The temporal lens is the first-line reviewer for that class of defect.
