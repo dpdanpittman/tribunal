@@ -14,6 +14,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.4] — 2026-05-19
+
+Two more contract PBTs — closing the lifecycle and batch coverage gaps v0.5.3 explicitly punted on. Contract bumps 0.4.0 → 0.4.1 (additive: two new property tests; no on-chain behavior change).
+
+### Added
+
+- **Property D — `rotation_preserves_accountability_trail`.** Hand-rolled stateful PBT (no extra dep) over a 7-step rotation scenario: register A → A commits F1, F2 → resolve F1 → rotate A→A' → A' commits F3 → resolve F2 → resolve F3. proptest randomizes the stakes and the TP/FP outcomes (3 outcome dimensions, ~8 combinations × 256 cases). Asserts:
+  - A is retired post-rotation; A's balance / tp_count / fp_count snapshot at the rotation moment is preserved
+  - A' starts with `rotation_floor` balance and inherits A's tp_count + fp_count
+  - A' records its `rotated_from` predecessor
+  - Resolution of F2 (filed by A before retirement) mutates A's record, **not** A's — pins the rule that the filing agent's pubkey owns mutation surface regardless of retirement timing
+  - Resolution of F3 (filed by A' post-rotation) mutates A's record only
+  - A remains retired forever (no resurrection path)
+
+- **Property E — `batch_commit_equivalent_to_n_independent_commits`.** Runs the same random sequence of N findings (1..=6, drawn from 1..=3 filers) through two paths in parallel: `CommitFindingBatch` against one App, and N individual `CommitFinding` txs against a second App. proptest asserts the final per-agent balances are identical across both paths. Pins the invariant that batch processing has no hidden state-coupling or order-dependence beyond the individual operations — a class of regression that's invisible at the integration-test layer.
+
+### Test runtime
+
+5 properties × 256 cases = ~1,280 contract instantiations + cw-multi-test ops. ~14.5s on a developer laptop. Still well within `cargo test`-on-every-change territory.
+
+### Why the constraints
+
+- `stake_a_prime` for the rotation property is bounded to `1..=ROTATION_FLOOR-1` (1..=9). A' starts at exactly `ROTATION_FLOOR` (10); stakes above that hit the contract's "insufficient stake balance" guard, which is correct behavior but not the property we're stress-testing here. proptest's shrinker found the boundary case on the second run; constraint added at strategy level so we exercise the rotation math, not the balance-check.
+- Batch property uses 1..=3 filers + 1..=6 findings so we hit "two findings from same agent in one batch" + "multiple agents in one batch" interactions in non-trivial frequency without inflating runtime.
+
+### Out of scope (still ahead)
+
+- **Resolution-batch PBT** (mirror of Property E for `ResolveFindingBatch`). Same shape, ~10 min of work; held until auto-registration ships in v0.5.5 to keep the change diff focused.
+- Property covering rotation-with-active-stake (rotate while A has uncommitted findings open) — feasible but the contract doesn't currently expose that state interleaving, so the property's value is low.
+
 ## [0.5.3] — 2026-05-19
 
 The contract-PBT release. The Go side picked up property-based testing in v0.4.4 (rapid for ledger / dispatch / converge); the Rust contract `tribunal-reputation` was still spot-check coverage. v0.5.3 closes that gap by adding proptest-driven invariant checks against cw-multi-test instances of the contract. The contract version bumps 0.3.0 → 0.4.0 (additive: new dev-dep + new test file; no on-chain behavior change).

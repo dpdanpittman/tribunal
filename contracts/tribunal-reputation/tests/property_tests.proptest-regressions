@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1b6cd7462bf706121cbd8fef223cbe8ce5e404da5af978a9260ad452b611e8a2 # shrinks to stake_a = 1, stake_a_prime = 11, pre_outcome = "true_positive", post_retire_outcome = "true_positive", a_prime_outcome = "true_positive"
