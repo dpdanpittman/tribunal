@@ -178,6 +178,47 @@ fn commit_batch(app: &mut App, contract: &Addr, plan_id: &str, findings: Vec<Fin
     .unwrap();
 }
 
+fn resolve_batch(
+    app: &mut App,
+    contract: &Addr,
+    plan_id: &str,
+    resolutions: Vec<ResolutionCommit>,
+) {
+    app.execute_contract(
+        Addr::unchecked(ADMIN),
+        contract.clone(),
+        &ExecuteMsg::ResolveFindingBatch {
+            plan_id: plan_id.into(),
+            resolutions,
+        },
+        &[],
+    )
+    .unwrap();
+}
+
+fn build_resolution_commit(
+    resolver: &Keypair,
+    plan_id: &str,
+    finding_id: &str,
+    outcome: &str,
+) -> ResolutionCommit {
+    let evidence_hash = "evd";
+    let sig = resolver.sign(&canonical_resolution(
+        plan_id,
+        finding_id,
+        outcome,
+        evidence_hash,
+    ));
+    ResolutionCommit {
+        plan_id: plan_id.into(),
+        finding_id: finding_id.into(),
+        outcome: outcome.into(),
+        resolver_pubkey: resolver.pubkey.clone(),
+        evidence_hash: evidence_hash.into(),
+        signature: sig,
+    }
+}
+
 fn build_finding_commit(
     filer: &Keypair,
     plan_id: &str,
@@ -537,6 +578,135 @@ proptest! {
         prop_assert_eq!(
             batch_balances, solo_balances,
             "batch and solo paths should produce identical per-agent balances"
+        );
+    }
+
+    /// PROPERTY F — commit → resolve(StaleDuplicate | Indeterminate)
+    /// roundtrip (v0.5.7).
+    /// Both outcomes return the staked amount without paying reward and
+    /// without changing tp/fp counts. Net delta from pre-commit baseline:
+    /// zero. They differ semantically (stale = duplicate of prior;
+    /// indeterminate = N rounds elapsed without resolution) but the
+    /// reputation math is identical. This property pins both branches.
+    #[test]
+    fn commit_then_resolve_stale_or_indeterminate_is_a_noop_on_balance(
+        stake in 1u128..=64,
+        sev in severity_strategy(),
+        outcome in prop_oneof![Just("stale_duplicate"), Just("indeterminate")],
+    ) {
+        let (mut app, contract) = setup_app();
+        let adv = register(&mut app, &contract, "adv", "adversary", 0xA0);
+        let pm = register(&mut app, &contract, "pm", "project-manager", 0xA1);
+
+        let pre = agent_balance(&app, &contract, &adv.pubkey);
+        let pre_record = agent_record(&app, &contract, &adv.pubkey);
+
+        commit(&mut app, &contract, &adv, "P-prop-F", "F-prop-F", sev, stake);
+        let mid = agent_balance(&app, &contract, &adv.pubkey);
+        prop_assert_eq!(mid, pre - stake, "commit should debit stake");
+
+        resolve(&mut app, &contract, &pm, "P-prop-F", "F-prop-F", outcome);
+
+        let post = agent_balance(&app, &contract, &adv.pubkey);
+        prop_assert_eq!(post, pre,
+            "stale/indeterminate roundtrip should net to zero (stake returned, no reward)");
+
+        // Pin tp/fp counts unchanged. Stale and Indeterminate must not
+        // increment either counter — those are reserved for TP/FP.
+        let post_record = agent_record(&app, &contract, &adv.pubkey);
+        prop_assert_eq!(post_record.tp_count, pre_record.tp_count,
+            "stale/indeterminate must not increment tp_count");
+        prop_assert_eq!(post_record.fp_count, pre_record.fp_count,
+            "stale/indeterminate must not increment fp_count");
+    }
+
+    /// PROPERTY G — resolve-batch equivalent to N independent resolves
+    /// (v0.5.7). Mirror of Property E for the resolution path. For any
+    /// random batch of N findings already committed to the same plan,
+    /// the resulting per-agent state from ResolveFindingBatch matches
+    /// applying those N as independent ResolveFinding txs. Pins the
+    /// invariant that resolution batch processing has no hidden state
+    /// coupling beyond individual ops.
+    ///
+    /// Strategy: pre-commit all N findings (so they exist on-chain to
+    /// resolve), then split the resolutions between the batch and solo
+    /// paths and compare final per-agent balances.
+    #[test]
+    fn resolve_batch_equivalent_to_n_independent_resolves(
+        entries in prop::collection::vec(
+            (0u8..3, 1u128..=32, prop_oneof![Just("true_positive"), Just("false_positive")]),
+            1..=6,
+        ),
+    ) {
+        // Run the batch path.
+        let (mut app_batch, contract_batch) = setup_app();
+        let filers_batch: Vec<Keypair> = (0..3)
+            .map(|i| register(&mut app_batch, &contract_batch, &format!("f{}", i), "adversary", 0xB0 + i))
+            .collect();
+        let pm_batch = register(&mut app_batch, &contract_batch, "pm", "project-manager", 0xBA);
+
+        // Pre-commit all findings on the batch app.
+        for (i, (filer_idx, stake, _)) in entries.iter().enumerate() {
+            commit(
+                &mut app_batch,
+                &contract_batch,
+                &filers_batch[*filer_idx as usize],
+                "P-prop-G",
+                &format!("F-{}", i),
+                "warning",
+                *stake,
+            );
+        }
+        // Resolve as one batch.
+        let resolutions: Vec<ResolutionCommit> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, (_, _, outcome))| {
+                build_resolution_commit(&pm_batch, "P-prop-G", &format!("F-{}", i), outcome)
+            })
+            .collect();
+        resolve_batch(&mut app_batch, &contract_batch, "P-prop-G", resolutions);
+
+        let batch_balances: Vec<u128> = (0..3)
+            .map(|i| agent_balance(&app_batch, &contract_batch, &filers_batch[i].pubkey))
+            .collect();
+
+        // Run the equivalent solo-resolves path.
+        let (mut app_solo, contract_solo) = setup_app();
+        let filers_solo: Vec<Keypair> = (0..3)
+            .map(|i| register(&mut app_solo, &contract_solo, &format!("f{}", i), "adversary", 0xB0 + i as u8))
+            .collect();
+        let pm_solo = register(&mut app_solo, &contract_solo, "pm", "project-manager", 0xBA);
+
+        for (i, (filer_idx, stake, _)) in entries.iter().enumerate() {
+            commit(
+                &mut app_solo,
+                &contract_solo,
+                &filers_solo[*filer_idx as usize],
+                "P-prop-G",
+                &format!("F-{}", i),
+                "warning",
+                *stake,
+            );
+        }
+        for (i, (_, _, outcome)) in entries.iter().enumerate() {
+            resolve(
+                &mut app_solo,
+                &contract_solo,
+                &pm_solo,
+                "P-prop-G",
+                &format!("F-{}", i),
+                outcome,
+            );
+        }
+
+        let solo_balances: Vec<u128> = (0..3)
+            .map(|i| agent_balance(&app_solo, &contract_solo, &filers_solo[i].pubkey))
+            .collect();
+
+        prop_assert_eq!(
+            batch_balances, solo_balances,
+            "resolve-batch and solo-resolve paths should produce identical per-agent balances"
         );
     }
 }

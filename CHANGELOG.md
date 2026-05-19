@@ -14,6 +14,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.7] — 2026-05-19
+
+Closes out PBT coverage for the Rust contract. Two more properties on top of v0.5.4's five. Now 7 total. Contract bumps 0.4.1 → 0.4.2 (additive: two new property tests, no on-chain behavior change).
+
+### Added
+
+- **Property F — `commit_then_resolve_stale_or_indeterminate_is_a_noop_on_balance`.** Both `StaleDuplicate` and `Indeterminate` outcomes return the staked amount without paying reward and without changing tp/fp counts. The reputation math is identical between the two; the property collapses them under one strategy with `outcome` drawn from `Just("stale_duplicate") | Just("indeterminate")`. Pins both the balance roundtrip AND the count-non-mutation in one go.
+
+- **Property G — `resolve_batch_equivalent_to_n_independent_resolves`.** Mirror of v0.5.4's Property E for the resolution path. Generates 1..=6 findings across 1..=3 filers + a PM, pre-commits them all to the same plan, then resolves them via `ResolveFindingBatch` in one App and N individual `ResolveFinding` txs in a fresh App; asserts per-agent final balances match. Each entry's outcome is drawn from `{true_positive, false_positive}` (the value-mutating subset). Pins the invariant that batch resolve has no hidden state coupling beyond individual ops.
+
+### Test runtime
+
+7 properties × 256 cases = ~1,792 cw-multi-test cycles. ~27s on a developer laptop. Still in `cargo test` territory.
+
+### Coverage summary across v0.5.3 + v0.5.4 + v0.5.7
+
+| Property | Subject                      | Pins                                                   |
+| -------- | ---------------------------- | ------------------------------------------------------ |
+| A        | commit→TP                    | balance += stake × reward_mult                         |
+| B        | commit→FP                    | balance -= stake                                       |
+| C        | leaderboard                  | sorted by balance desc                                 |
+| D        | rotation                     | accountability trail preserved across retire/successor |
+| E        | batch-commit                 | equivalent to N solo commits                           |
+| F        | commit→Stale / Indeterminate | balance unchanged, counts unchanged                    |
+| G        | batch-resolve                | equivalent to N solo resolves                          |
+
+The four `Outcome` variants (TP / FP / Stale / Indeterminate) are now PBT-pinned. Both batch endpoints (`CommitFindingBatch`, `ResolveFindingBatch`) are PBT-equivalence-pinned. Rotation accountability is PBT-pinned. Leaderboard ordering is PBT-pinned. The contract's reputation math is empirically verified across ~1,800 random scenarios per `cargo test` invocation.
+
+### Out of scope (genuinely)
+
+The "still ahead" list from v0.5.4 is now empty. Stateful PBT for rotation-with-active-stake (rotation while an agent has uncommitted findings open) was previously flagged as low-value because the contract doesn't expose that state interleaving; that's still the case. Further PBT additions would be coverage-completion territory rather than load-bearing.
+
 ## [0.5.6] — 2026-05-19
 
 Cross-plan findings. The temporal lens (v0.5.0) identifies properties that span many plans — portrait drift across N audit cycles, defect-class recurrence, implementer-reputation trends. The ledger's plan_id-keyed schema couldn't natively represent those; v0.5.6 closes the gap with a `trajectory_id` field and an `exactly-one-of(plan_id, trajectory_id)` constraint at the signing layer.
