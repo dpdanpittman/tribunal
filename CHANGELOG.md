@@ -14,6 +14,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **P-v033-audit** — Tribunal's second self-audit (against v0.3.3). 21 findings (1 Critical + 9 Warning + 11 Suggestion). Verdict Escalate. The adversary's headline meta-finding (`F-NEW-403`): the methodology is not converging on a fixed point — each fix is a more precise version of the same primitive (parse-the-LCD-error-string), and each version is narrower than the contract's true error grammar. Motivated v0.3.4. Settlement: commit `5126E66E...`, resolve `F2C0758C...`.
 - **Methodology extension: convergence (`docs/convergence.md`, `docs/adr/0001-convergence-controller.md`).** Single-pass review tells you what's wrong; a converging review tells you when you're done. Spec for a multi-round loop with rotated panel composition per round, configurable stopping criteria (`consecutive-clean(n)`, `no-novel-findings`, `adversary-explicit-pass`, `severity-floor`, `max-rounds`), implementer separation by keypair label, and per-round reputation feedback. Implementation phased: v0.4.0 ships output-only loop (`tribunal converge`), v0.4.1 adds the implementer interface, M3 adds auto-apply.
 
+## [0.5.0] — 2026-05-18
+
+The temporal-lens release (M1 of ADR-0003). Tribunal's lens-parallel methodology gains a fourth, opt-in reviewer for systems whose central claim is longitudinal — memory, identity, accumulation, drift, continuity. The first audit of `session-essence` (P-session-essence-audit) surfaced 11 adversary findings the trio missed, all living in the seams between co-designed components. Generalising the observation: when a system's load-bearing property is the integral of small per-cycle changes, the per-component lenses systematically underweight it. The temporal lens is the first-line reviewer for that class of defect.
+
+### Added
+
+- **`agents/tribunal-reviewer-temporal.md`** — the fourth lens-parallel reviewer. Six-axis checklist: reflexive loops (output → own-input cycles), accumulation properties (per-cycle vs. per-trajectory invariants), composition seams (co-designed but separately versioned components), calibration / drift detection (is there a ground-truth check?), failure-mode visibility over time (when does the operator find out?), marketing-vs-engineering split (does the documentation make falsifiable claims?). Severity ladder tuned for longitudinal stakes: Critical reserved for undefended + undetectable properties; Warning for documented-but-contradicted; Suggestion for latent failure modes that haven't fired yet.
+- **`intent.md` schema: `audit_axes` field** — selects which reviewer lenses dispatch. Defaults to `[architecture, security, performance]`; add `temporal` to opt in the fourth lens.
+- **`intent.md` schema: `temporal_artifact_paths` field** — optional list of paths the temporal lens may `Read` during audit. Lets the lens audit the deployed evidence (e.g., `~/.claude/essence/portrait.md`, archive directories) rather than the spec alone. Read-only by contract; inherits operator filesystem permissions.
+
+### Changed
+
+- **`skills/tribunal-review/SKILL.md` — Stage 1 dispatch is now `audit_axes`-driven.** When the intent declares `temporal`, the skill dispatches `@tribunal-reviewer-temporal` in the same single message as the trio. When absent or only the three defaults are listed, behavior is identical to v0.4.x.
+- **`docs/methodology.md` — four-lens panel documented.** Roles table adds `@reviewer-temporal` (optional). Stage 1 section adds the `audit_axes` schema, the opt-in trigger ("is the system's central claim longitudinal?"), and a clawpatch-path note (clawpatch upstream owns its lens set; temporal coverage in v0.5 is a native-dispatch feature).
+
+### Decisions captured (vs. ADR-0003's open questions)
+
+- **Cross-plan findings: deferred to M2.** v0.5.0 lens files per-plan only ("as of this plan, the trajectory shows X"). The ledger's `plan_id` schema does not change. Revisit when M2's `tribunal history <plan>` primitive ships and there's real cross-plan demand.
+- **Default model: `opus-4-7`, overridable.** The temporal lens is integrative (holds many cycles in working memory, notices trajectory patterns) — adversary-shaped, not trio-shaped. Different cognitive demand from the parallel-narrow trio. Empirical validation in M2/M3 can drop to sonnet if findings prove a cheaper model is sufficient.
+- **Live artifact access: opt in via `temporal_artifact_paths`.** Operator declares paths in `intent.md`; lens inherits operator filesystem permissions. No new trust boundary crossed (the parent Claude could already read the same paths) — just explicit use of existing access, bounded by OS perms.
+
+### Adversary intake
+
+The adversary stage's report glob (`internal/review/hybrid.go`) already accepts any `reviewer*` filename, so `reviewer-temporal.md` is picked up automatically alongside the trio's reports when present. No code change in the adversary path.
+
+### Out of scope (later milestones)
+
+- **M2 (v0.5.1)**: `tribunal history <plan>` for emitting a structured timeline of all rounds; ledger read primitives for the temporal lens.
+- **M3 (v0.5.2)**: stateful PBT via `rapid` — convert temporal-lens findings about state-machine properties into executable trajectory tests.
+
 ## [0.4.5] — 2026-05-17
 
 The implementer-reputation release. v0.4.2 added the implementer; v0.4.3 added the verify gate; v0.4.5 closes the feedback loop. Implementers that ship patches passing verify accumulate reputation; implementers that ship patches failing verify (or failing `git apply --check`) lose stake. The local ledger captures the signal immediately; on-chain settlement happens via the existing `tribunal chain sync` path.

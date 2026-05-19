@@ -59,17 +59,18 @@ A **hotfix lane** allows compressed `specify(min) → plan(min) → implement` b
 
 ### Roles
 
-| Role               | Responsibility                                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| `@project-manager` | Routing, assignment, gate decisions, branch policy, on-chain settlement.                              |
-| `@architect`       | Module boundaries, interface contracts, cross-cutting tradeoffs.                                      |
-| `@implementer`     | The code (`fullstack-dev` analog, simplified to single role for v0.1).                                |
-| `@reviewer-arch`   | QC lens #1: dependency direction, boundary integrity, abstraction cost.                               |
-| `@reviewer-sec`    | QC lens #2: auth, state integrity, unsafe defaults, injection surfaces.                               |
-| `@reviewer-perf`   | QC lens #3: hot-path complexity, resource lifecycle, observability.                                   |
-| `@adversary`       | Hostile reviewer. One job: find what the trio missed.                                                 |
-| `@classifier`      | Failure router. When verification fails, decides if spec/code/prover/tool/state-space/infra is wrong. |
-| `@qa`              | Verifies acceptance against intent + plan.                                                            |
+| Role                 | Responsibility                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `@project-manager`   | Routing, assignment, gate decisions, branch policy, on-chain settlement.                                                          |
+| `@architect`         | Module boundaries, interface contracts, cross-cutting tradeoffs.                                                                  |
+| `@implementer`       | The code (`fullstack-dev` analog, simplified to single role for v0.1).                                                            |
+| `@reviewer-arch`     | QC lens #1: dependency direction, boundary integrity, abstraction cost.                                                           |
+| `@reviewer-sec`      | QC lens #2: auth, state integrity, unsafe defaults, injection surfaces.                                                           |
+| `@reviewer-perf`     | QC lens #3: hot-path complexity, resource lifecycle, observability.                                                               |
+| `@reviewer-temporal` | QC lens #4 (optional): longitudinal composition — reflexive loops, accumulation, seams, drift. Opt in via `audit_axes` in intent. |
+| `@adversary`         | Hostile reviewer. One job: find what the trio (or quartet) missed.                                                                |
+| `@classifier`        | Failure router. When verification fails, decides if spec/code/prover/tool/state-space/infra is wrong.                             |
+| `@qa`                | Verifies acceptance against intent + plan.                                                                                        |
 
 Each role corresponds to a markdown agent definition at `agents/tribunal-<role>.md`.
 
@@ -87,7 +88,20 @@ The methodology's signature technique. Two stages.
 
 ### Stage 1 — Lens-parallel review
 
-PM dispatches `@reviewer-arch`, `@reviewer-sec`, and `@reviewer-perf` in **parallel** (single invocation message — no serial rollout). Each reviewer:
+The `intent.md` `audit_axes` field selects which lenses run. The three defaults — `architecture`, `security`, `performance` — always dispatch. A fourth axis, `temporal`, opts in the longitudinal-composition lens for systems whose central claim is memory / identity / accumulation / drift / continuity (ADR-0003).
+
+```yaml
+# intent.md
+audit_axes:
+  - architecture
+  - security
+  - performance
+  - temporal # optional; enable for longitudinal systems
+temporal_artifact_paths: # optional; live artifacts the temporal lens may read
+  - ~/.claude/essence/
+```
+
+PM dispatches the selected reviewers (`@reviewer-arch`, `@reviewer-sec`, `@reviewer-perf`, and — when opted in — `@reviewer-temporal`) in **parallel** (single invocation message — no serial rollout). Each reviewer:
 
 - Reviews from its assigned lens.
 - Files **findings** at three severities: Critical / Warning / Suggestion.
@@ -95,6 +109,10 @@ PM dispatches `@reviewer-arch`, `@reviewer-sec`, and `@reviewer-perf` in **paral
 - Produces a Verdict: `Approve` / `Request Changes` / `Needs Discussion`.
 
 PM consolidates verdicts. If any reviewer says `Request Changes` and a finding isn't resolved, the change loops back to `@implementer`.
+
+**When to opt into `temporal`.** Ask: is the system's central claim longitudinal? Memory systems, identity systems, accumulation ledgers, archives with surgical-edit pipelines, multi-binary releases whose seams are co-designed — these systems have load-bearing properties that emerge only over many cycles, and the trio of per-component lenses systematically underweights them. The temporal lens is the first-line reviewer for those properties. For everything else, leave `audit_axes` at the three defaults; the lens is silent when not declared.
+
+**Clawpatch path.** When `tribunal review --via-clawpatch` is used, the lens set is owned by clawpatch upstream and currently does not include `temporal`. Temporal coverage in v0.5 is a native-dispatch feature; clawpatch parity is an upstream concern (ADR-0002).
 
 ### Stage 2 — Adversarial gate
 

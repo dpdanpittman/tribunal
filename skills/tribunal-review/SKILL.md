@@ -28,16 +28,44 @@ If any of those is missing, **stop and ask**. A review without anchored scope wa
 
 ## Stage 1 — Lens-parallel review
 
-Dispatch `@tribunal-reviewer-arch`, `@tribunal-reviewer-sec`, `@tribunal-reviewer-perf` **in a single message** (no serial rollout). Each reviewer:
+Read `intent.md` first. The `audit_axes` field selects which reviewers to dispatch. The three default axes (`architecture`, `security`, `performance`) are always present. A fourth opt-in axis, `temporal`, enables the longitudinal-composition lens for systems whose central claim is memory / identity / accumulation / drift / continuity (ADR-0003).
 
-- Receives the same Assignment: `Plan ID`, `Review range / Diff basis`, `Review cwd`, `Working branch`, and the intent doc + plan paths.
+```yaml
+audit_axes:
+  - architecture
+  - security
+  - performance
+  - temporal # optional; opt in for longitudinal systems
+temporal_artifact_paths: # optional; declared live artifacts the temporal lens may read
+  - ~/.claude/essence/
+```
+
+If `audit_axes` is absent or only lists the three defaults, dispatch the trio:
+
+- `@tribunal-reviewer-arch`
+- `@tribunal-reviewer-sec`
+- `@tribunal-reviewer-perf`
+
+If `audit_axes` includes `temporal`, dispatch all four:
+
+- `@tribunal-reviewer-arch`
+- `@tribunal-reviewer-sec`
+- `@tribunal-reviewer-perf`
+- `@tribunal-reviewer-temporal`
+
+Dispatch them **in a single message** (no serial rollout). Each reviewer:
+
+- Receives the same Assignment: `Plan ID`, `Review range / Diff basis`, `Review cwd`, `Working branch`, and the intent doc + plan paths. The temporal reviewer additionally consumes `temporal_artifact_paths` from `intent.md` if declared.
 - Reviews from its assigned lens only:
   - **arch**: dependency direction, boundary integrity, abstraction cost, refactor traceability.
   - **sec**: auth boundaries, state consistency, unsafe defaults, injection / prompt-injection surfaces.
   - **perf**: hot-path complexity, resource lifecycle, observability gaps, degraded behavior.
+  - **temporal** (when enabled): reflexive loops, accumulation properties, composition seams, calibration / drift detection, failure-mode visibility over time, marketing-vs-engineering split.
 - Files **findings** at three severities (Critical / Warning / Suggestion).
 - Each finding is **signed by the reviewer's agent keypair** and written to `.tribunal/ledger.jsonl` via `tribunal` CLI or the equivalent SDK call.
 - Returns a Verdict: `Approve` / `Request Changes` / `Needs Discussion`.
+
+> **Note on clawpatch-driven lens stage**: when `tribunal review --via-clawpatch` is used, the lens set is owned by clawpatch upstream and currently does not include `temporal`. The temporal lens is a native-dispatch feature in v0.5.0; clawpatch parity is an upstream concern.
 
 ### Severity gate (absolute)
 
