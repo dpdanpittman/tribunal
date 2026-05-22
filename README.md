@@ -84,4 +84,4 @@ But adversaries that are never held accountable hallucinate findings as freely a
 
 ## License
 
-[MIT](./LICENSE).
+[GNU AGPLv3 or later](./LICENSE). Open-source, copyleft for network use — anyone running this as a service must publish their modifications under the same license.
