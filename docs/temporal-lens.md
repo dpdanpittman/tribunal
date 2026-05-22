@@ -1,6 +1,6 @@
 # Temporal lens
 
-Status: shipped — v0.5.0 (M1), v0.5.1 (M2), v0.5.2 (M3). Design: [ADR-0003](https://github.com/dpdanpittman/tribunal/blob/main/docs/adr/0003-temporal-lens.md).
+Status: shipped — v0.5.0 (M1), v0.5.1 (M2), v0.5.2 (M3), v0.5.6 (cross-plan findings). Contract-side PBT coverage closed in v0.5.7 (7 properties total). Design: [ADR-0003](https://github.com/dpdanpittman/tribunal/blob/main/docs/adr/0003-temporal-lens.md).
 
 ## The gap it closes
 
@@ -71,19 +71,40 @@ func TestPortraitPrunePreservesLoadBearing(t *testing.T) {
 
 Worked example: [`examples/trajectory-portrait/`](https://github.com/dpdanpittman/tribunal/tree/main/examples/trajectory-portrait) — a session-essence-flavoured portrait with safe + buggy `Synthesize` variants. The safe variant's Property passes 100 trials in milliseconds; the buggy variant's invariant trips after one rapid action (test is `t.Skip`'d in CI so the suite stays green; un-skip to watch rapid shrink the counterexample).
 
+## Cross-plan findings (v0.5.6)
+
+Some longitudinal claims are about a trajectory that spans many plans — portrait drift across N audit cycles, defect-class recurrence, implementer-reputation trends. The ledger's `plan_id`-keyed schema couldn't represent those natively. v0.5.6 closes the gap with a `trajectory_id` field on both `Finding` and `Resolution`, with an `exactly-one-of(plan_id, trajectory_id)` constraint enforced at the signing layer:
+
+```go
+f := ledger.NewTrajectoryFinding(
+    "portrait-drift-across-cycles", // trajectory_id
+    /* round */ 0,
+    /* claim */ "load-bearing section count decreased monotonically over 6 audit cycles",
+    /* severity */ "warning",
+    /* category */ "temporal_invariant",
+    /* evidence_hash */ hash,
+)
+```
+
+`tribunal history --trajectory <id>` (a sibling of `--plan`) reads the same timeline shape across trajectory-scoped entries. Trajectory findings stay local-only by design — they don't settle on-chain in v0.5.6, since the contract's `plan_id` is the natural settlement key. `chain sync` filters them out and surfaces a one-line count on stderr.
+
 ## v0.5 milestone summary
 
-| Version | Milestone | What shipped                                                                                  |
-| ------- | --------- | --------------------------------------------------------------------------------------------- |
-| v0.5.0  | M1        | Temporal lens agent + `audit_axes` intent schema + Stage 1 dispatch wiring + methodology docs |
-| v0.5.1  | M2        | `tribunal history --plan <id>` CLI + plan-scoped TimelineSummary projection                   |
-| v0.5.2  | M3        | `trajectory.Property` PBT scaffold + worked example + finding-to-test pathway                 |
+| Version | What shipped                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------------- |
+| v0.5.0  | M1 — temporal lens agent + `audit_axes` intent schema + Stage 1 dispatch wiring + methodology docs       |
+| v0.5.1  | M2 — `tribunal history --plan <id>` CLI + plan-scoped TimelineSummary projection                         |
+| v0.5.2  | M3 — `trajectory.Property` PBT scaffold + worked example + finding-to-test pathway                       |
+| v0.5.3  | Rust contract PBT via `proptest` — 3 properties (TP / FP / leaderboard sort) against `cw-multi-test`     |
+| v0.5.4  | Rust contract PBT — +2 properties (rotation accountability trail + batch-commit equivalence)             |
+| v0.5.5  | Auto on-chain registration for `chain sync --auto-register` — closes the manual per-agent register step  |
+| v0.5.6  | Cross-plan findings — `trajectory_id` field + `--trajectory` filter on history; local-only by design     |
+| v0.5.7  | Rust contract PBT closure — +2 properties (Stale/Indeterminate noop + `ResolveFindingBatch` equivalence) |
 
-The lens can now: **identify** longitudinal properties (M1), **read** the trajectory they live on (M2), and **enforce** them as executable rapid tests (M3) — finding-ID-traceable counterexamples close the loop from audit to CI.
+The lens can now: **identify** longitudinal properties (M1), **read** the trajectory they live on (M2), **enforce** them as executable rapid tests (M3), and **span many plans** when the longitudinal property lives across audit cycles (v0.5.6). The Rust contract's stake/reward math is pinned by 7 property tests (v0.5.3 + v0.5.4 + v0.5.7).
 
 ## What's still ahead
 
-- **Cross-plan findings schema** — when a defect spans many plans ("portrait drift across six audit cycles"), neither the current `plan_id`-keyed ledger nor the temporal lens's per-plan filing fits cleanly. Deferred from v0.5.0; revisit when a real audit surfaces demand. (Discussed in ADR-0003 §Open questions.)
 - **Clawpatch parity** — the clawpatch lens stage (an alternative to native dispatch) is owned by clawpatch upstream and currently does not include `temporal`. Native-dispatch path is the v0.5 implementation; clawpatch parity is an upstream concern.
 
 The temporal lens is the lens the methodology was missing.
