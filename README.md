@@ -58,7 +58,7 @@ tribunal chain query leaderboard
 
 ## Status
 
-This repo is in active development. v0.1 ships the methodology, CLI, skills/agents, local ledger, and a Go fizzbuzz example. v0.2 adds multi-model adversarial dispatch and the real verification pyramid. v0.3 adds the CosmWasm contract and on-chain settlement.
+This repo is in active development. v0.1 ships the methodology, CLI, skills/agents, local ledger, and a Go fizzbuzz example. v0.2 adds multi-model adversarial dispatch and the real verification pyramid. v0.3 adds the CosmWasm contract and on-chain settlement. v0.5 adds the temporal lens, trajectory PBT, and cross-plan findings. v0.5.8 makes the reproducibility field on every finding mandatory (exploit path / trigger sequence / workload+numbers / manifesting cycle / PoC) so downstream maintainers can distinguish real threats from style violations in under 30 seconds.
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for what's released, and [`docs/methodology.md`](./docs/methodology.md) for the design.
 

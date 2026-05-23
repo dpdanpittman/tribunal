@@ -110,6 +110,18 @@ PM dispatches the selected reviewers (`@reviewer-arch`, `@reviewer-sec`, `@revie
 
 PM consolidates verdicts. If any reviewer says `Request Changes` and a finding isn't resolved, the change loops back to `@implementer`.
 
+**Finding shape — required reproducibility field (v0.5.8+).** Every finding from every lens (and the adversary) MUST include a lens-specific reproducibility field inline — both in `.tribunal/findings/F-<id>.md` and in the lens summary report at `.tribunal/reports/<plan-id>/<lens>-report.md`. The field tells a downstream reader (especially an open-source maintainer triaging a tribunal audit) _how to verify the defect exists_ in under 30 seconds:
+
+| Lens       | Required field         | What it answers                                                |
+| ---------- | ---------------------- | -------------------------------------------------------------- |
+| `sec`      | **Exploit path**       | What `curl` / `python -c` / payload triggers the vulnerability |
+| `arch`     | **Trigger sequence**   | What minimal call/import/control-flow path exposes the defect  |
+| `perf`     | **Workload + numbers** | What input shape + measured/predicted numbers show the blow-up |
+| `temporal` | **Manifesting cycle**  | How many iterations + what closing trigger to make it visible  |
+| adversary  | **Reproducible PoC**   | A copy-paste-verifiable one-liner where the language allows    |
+
+Findings without the reproducibility field are **automatically downgraded to Suggestion** regardless of the reviewer's intended severity. This is not a style rule — it is a calibration rule. A security or correctness finding that cannot ground its severity in a reproducible trigger reads as opinion, and a maintainer asked to "scramble" on opinion will start ignoring tribunal output. Forcing every Critical and Warning to earn its tier with a reproducible path is what makes the audit actionable.
+
 **When to opt into `temporal`.** Ask: is the system's central claim longitudinal? Memory systems, identity systems, accumulation ledgers, archives with surgical-edit pipelines, multi-binary releases whose seams are co-designed — these systems have load-bearing properties that emerge only over many cycles, and the trio of per-component lenses systematically underweights them. The temporal lens is the first-line reviewer for those properties. For everything else, leave `audit_axes` at the three defaults; the lens is silent when not declared.
 
 **Clawpatch path.** When `tribunal review --via-clawpatch` is used, the lens set is owned by clawpatch upstream and currently does not include `temporal`. Temporal coverage in v0.5 is a native-dispatch feature; clawpatch parity is an upstream concern (ADR-0002).

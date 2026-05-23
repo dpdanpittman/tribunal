@@ -30,7 +30,7 @@ const pillars = [
 
 const proofPoints = [
   { metric: "4", label: "self-audit cycles run; the adversary stage caught a Critical the lens trio missed in every one." },
-  { metric: "v0.5.7", label: "current release. The full v0.5 arc landed in one day: temporal lens, trajectory PBT, contract PBT closure (7 properties), auto on-chain registration, cross-plan findings." },
+  { metric: "v0.5.8", label: "current release. Required-reproducibility patch — every finding now ships a lens-specific trigger path (exploit / call sequence / workload+numbers / manifesting cycle / PoC). Findings without it are downgraded to Suggestion." },
   { metric: "<15min", label: "wall time per full review pass: lens panel + adversary + on-chain settlement." },
   { metric: "F-NEW-403", label: "adversary's meta-finding that motivated the convergence methodology extension." },
 ];
@@ -41,7 +41,7 @@ const proofPoints = [
     <div class="max-w-6xl mx-auto px-6 pt-20 pb-24">
       <div class="max-w-3xl">
         <p class="text-xs uppercase tracking-[0.2em] text-verdict-adversary font-mono mb-6">
-          v0.5.7 · temporal lens · cross-plan findings · public ledger
+          v0.5.8 · required reproducibility · temporal lens · public ledger
         </p>
         <h1 class="font-display text-5xl sm:text-6xl font-semibold text-ink-50 tracking-tight leading-[1.05]">
           Ship LLM code <span class="text-verdict-adversary">without</span> inheriting LLM failure modes.
@@ -165,7 +165,7 @@ const proofPoints = [
           seams. v0.5 adds an opt-in fourth lens for longitudinal systems, a <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">tribunal history</code>
           primitive that gives the lens trajectory access, a <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">trajectory.Property</code> PBT scaffold
           that turns lens findings into executable rapid tests, and a <code class="hash bg-ink-800/60 px-1.5 py-0.5 rounded">trajectory_id</code> field
-          (v0.5.6) for findings that span many plans. v0.5.7 closes Rust-contract PBT coverage at 7 properties.
+          (v0.5.6) for findings that span many plans. v0.5.7 closes Rust-contract PBT coverage at 7 properties. v0.5.8 requires a reproducibility field on every finding (exploit path / trigger sequence / workload+numbers / manifesting cycle / PoC) so downstream maintainers can distinguish real threats from style violations.
           <strong>Identify → read → enforce.</strong> The lens the methodology was missing.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
