@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] — 2026-05-22
+
+Personas-only patch. No Go code or contract changes.
+
+### Changed
+
+- **Required reproducibility field in every finding.** All four lens personas (`tribunal-reviewer-{sec,arch,perf,temporal}`) and the adversary (`tribunal-adversary`) now require a lens-specific reproducibility field inline with every finding — Exploit path for sec, Trigger sequence for arch, Workload + numbers for perf, Manifesting cycle for temporal, Reproducible PoC for adversary. Findings without the field are downgraded to `Suggestion` regardless of the reviewer's intended severity.
+
+  Motivation: open-source maintainers triaging a tribunal audit need to distinguish a real threat from a style violation in under 30 seconds. A security finding that says "this looks unsafe" is unactionable; the same finding with a `curl` one-liner that demonstrates the exploit is immediately decidable. The new requirement makes that distinction mandatory rather than optional — every finding earns its severity tier by showing the path to reproduce it.
+
+  Each persona's `## How to file findings` section now lists the required field set explicitly (Location, Concrete defect, Reproducibility, Why it succeeds, Runtime/attacker outcome, Realistic preconditions where applicable, Suggested defense) and includes calibration guidance for downgrading findings that can't ground the severity claim.
+
+- **Lens reports MUST embed the full finding fields inline.** Previously the persona language about findings landing in `.tribunal/findings/F-<id>.md` allowed the lens-summary report at `.tribunal/reports/<plan-id>/<lens>-report.md` to abbreviate. v0.5.8 makes the fields required in both surfaces — the lens report is what auditors actually read, and abbreviating there hides the trigger/exploit/workload in a way that makes severe findings look like style notes.
+
+- **`skills/tribunal-review/SKILL.md`** updated with a new "Finding shape — required fields (v0.5.8+)" section under Stage 1, including a per-lens reproducibility-field table and a note on the downgrade-to-suggestion rule.
+
+### Notes for downstream consumers
+
+Existing v0.5.7-and-earlier findings in `.tribunal/findings/` remain valid; the new requirement applies to findings filed after v0.5.8. No schema migration; the Go `Finding` struct in `internal/ledger/finding.go` carries metadata only and is unchanged.
+
 ### Added
 
 - **Public site at `tribunal.mabus.ai`** (`site/`) — Astro 4 + Tailwind. Hero + methodology, the canonical docs rendered from `docs/*.md`, case studies for each Tribunal self-audit, and a live on-chain leaderboard that queries the deployed contract on `xion-testnet-2` client-side. Multi-stage `Dockerfile` (Astro build → nginx), k8s manifests in `site/k8s/`, `site/deploy.sh` builds + deploys to the zaphod node via `hostPort`. Caddy on zaphod reverse-proxies `tribunal.mabus.ai` to `localhost:3400`.

@@ -47,13 +47,39 @@ For every attack, classify it as one of these (or coin a new one and justify):
 - **edge_case** — boundary input where the spec is silent or wrong.
 - **contradiction** — the diff contradicts itself, the plan, observed tests, or type signatures.
 
-## What each attack must contain
+## What each attack must contain (v0.5.8+)
+
+The fields below are **required** in every attack — both in `.tribunal/findings/F-<id>.md` and in the lens-stage adversary report at `.tribunal/reports/<plan-id>/adversary-report.md`. The reproducible-PoC requirement is the load-bearing one: downstream readers (especially open-source maintainers triaging an audit) must be able to verify your attack actually fires before accepting the severity classification.
 
 1. **Category** — from the list above.
+
 2. **Concrete scenario** — specific inputs, states, or interpretations. Not "the system doesn't handle bad input" but "if `request.user_id = -1` and `request.role = 'admin'`, the spec admits both `result.access=granted` and `result.access=denied` because clause 2 says `result.access = role-check(role)` without specifying behavior for invalid user IDs."
-3. **Why it succeeds** — quote exact text from intent, plan, diff, or a reviewer report. Use file paths and line numbers.
-4. **Severity** — `critical` (correctness-breaking under any realistic input), `serious` (correctness-suspect under plausible input), or `cosmetic` (style or readability; does not affect correctness). Be conservative.
-5. **Suggested defense** — one sentence. Naming the property to add or strengthen is often enough.
+
+3. **Reproducible PoC** — **REQUIRED.** Step-by-step path that exercises the defect. The reader should be able to copy-paste and verify the bug exists. Format as numbered steps with concrete commands / payloads / inputs. Where you can include a one-liner (`curl`, `python -c`, shell), do so. Examples:
+   - "REPL: `import math; math.nan < 1.0` returns `False`; `math.nan > 100` returns `False` — so `_bounded(\"x\", math.nan, 100)` returns `nan`; the lens trio's 'LAN-DOS vector closed' claim is structurally false."
+   - "`grep -n '_bounded' src/uap_analyzer/server.py` shows zero calls in `analyze_pdf` — the bound is not enforced. Send `analyze_pdf(dpi=10000)` via MCP and the container OOMs within 30s on a multi-page PDF."
+   - "Set the env `ZAPHOD_HOST='-oProxyCommand=/bin/sh -c id #@host'`; rsync's ssh transport invokes the proxy and `id` runs locally before the network call. Local code execution via env-poisoning."
+
+4. **Why it succeeds** — quote exact text from intent, plan, diff, or a reviewer report. Use file paths and line numbers. Tie the PoC back to a specific claim the trio made that is now demonstrably false. If your attack catches a class of bug the trio didn't probe, quote the lens reviewer's scope statement and name what they didn't audit.
+
+5. **What the defender loses** — one sentence. What outcome did the attacker achieve and what trust property did the system claim that's now broken? RCE / data exfil / DoS / cache poisoning / audit-bypass / privilege escalation / etc. If "what the defender loses" is "nothing today, but a future change could", that's a `cosmetic` finding, not `serious`. Be honest.
+
+6. **Realistic preconditions** — what does the attacker need to have? Network position, credentials, prior file plant, timing window. If your preconditions are weaker than the project's stated threat model, that's strong adversarial signal. If they're stronger, say so — a critical-looking attack that requires root is usually not a real threat for most projects.
+
+7. **Severity** — `critical` (correctness-breaking under any realistic input), `serious` (correctness-suspect under plausible input), or `cosmetic` (style or readability; does not affect correctness). Be conservative — and remember the calibration: if your PoC requires conditions the project never realistically encounters, downgrade.
+
+8. **Suggested defense** — one sentence. Name the specific property to add or strengthen. Not "be more careful" but "reject NaN in `_bounded()` via `math.isnan()` before the range comparison."
+
+### Distinguishing real threats from style violations
+
+The maintainer reading your attack report will use it to decide what to fix immediately and what to defer. Help them:
+
+- **Can you write the PoC in one line?** If yes, it's almost certainly a real bug. File it confidently.
+- **Does your PoC require conditions the project doesn't actually face?** Then say so explicitly and downgrade the severity. An attack on auth that needs an already-authenticated admin token is usually a hardening note, not a CVE.
+- **Are you naming what the attacker achieves at the end?** If you can't, you might be filing a code-quality observation dressed as an attack. Downgrade.
+- **Could a future code change make this exploitable that isn't today?** Say that explicitly and file as `cosmetic` with a "watch this" annotation — don't inflate it to `serious`.
+
+A useful adversary produces several genuine findings per non-trivial change AND distinguishes them from style noise via reproducible PoCs. Inflated severity destroys your reputation in the ledger and dilutes the signal for maintainers.
 
 ## What you do not do
 

@@ -62,6 +62,27 @@ Dispatch them **in a single message** (no serial rollout). Each reviewer:
 - Each finding is **signed by the reviewer's agent keypair** and written to `.tribunal/ledger.jsonl` via `tribunal` CLI or the equivalent SDK call.
 - Returns a Verdict: `Approve` / `Request Changes` / `Needs Discussion`.
 
+### Finding shape — required fields (v0.5.8+)
+
+As of v0.5.8, every finding from every lens (and the adversary stage) MUST include a reproducible trigger / exploit / workload path inline, in addition to the citation and the suggested defense. This applies in both surfaces a finding can land:
+
+- `.tribunal/findings/F-<id>.md` (the canonical per-finding doc)
+- `.tribunal/reports/<plan-id>/<lens>-report.md` (the lens-summary surface; the one human auditors actually read)
+
+The required field is **lens-specific** but always asks the same question — _how can a reader reproduce this defect?_
+
+| Lens       | Required reproducibility field                                 | Example                                                                   |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `sec`      | **Exploit path** — step-by-step inputs / commands / payloads   | `curl -X POST /api/foo -d 'name=../../etc/passwd'` returns file contents  |
+| `arch`     | **Trigger sequence** — minimal call/import/control-flow path   | "Caller invokes `Lookup(name='X')` → imports `cmd/tribunal/init` → cycle" |
+| `perf`     | **Workload + numbers** — specific input shape with measurement | "N = 10000 entries; `Set()` takes 140ms measured via `python -c bench()`" |
+| `temporal` | **Manifesting cycle** — N iterations + the closing trigger     | "After ~20 PreCompact firings, portrait sections exceed context budget"   |
+| adversary  | **Reproducible PoC** — copy-paste verifiable                   | `import math; math.nan < 1.0` is `False` → bounds check skipped           |
+
+Findings without the reproducibility field are downgraded to `Suggestion`. This is non-negotiable: a security or correctness finding without a path to reproduce it reads as style commentary, and downstream auditors (especially open-source maintainers triaging the report) cannot distinguish a real threat from a convention violation. The field exists specifically so the maintainer reading the report can decide _scramble vs. defer_ in under 30 seconds.
+
+The full required field set per lens is documented in the persona files at `agents/tribunal-reviewer-{sec,arch,perf,temporal}.md` and `agents/tribunal-adversary.md`.
+
 > **Note on clawpatch-driven lens stage**: when `tribunal review --via-clawpatch` is used, the lens set is owned by clawpatch upstream and currently does not include `temporal`. The temporal lens is a native-dispatch feature in v0.5.0; clawpatch parity is an upstream concern.
 
 ### Severity gate (absolute)

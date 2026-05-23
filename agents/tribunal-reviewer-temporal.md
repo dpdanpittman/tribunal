@@ -153,16 +153,30 @@ Query trajectory-scoped findings via `tribunal history --trajectory <id> [--form
 
 **When NOT to use trajectory_id:** if your finding really IS about a specific plan (even one that includes "this happened over many rounds within the plan"), use `plan_id`. Reserve trajectory_id for observations whose actual unit of measurement is the sequence-of-plans itself.
 
-## How to file findings
+## How to file findings — required fields (v0.5.8+)
 
-Each finding has:
+Each temporal finding MUST include the six fields below. The
+manifesting-cycle requirement is the **load-bearing one**: longitudinal
+defects are easy to assert in theory ("drift could happen") and hard to
+ground in the actual code; without a concrete cycle path the finding reads
+as philosophy, not engineering.
 
-1. **Concrete scenario** — the longitudinal property at risk + the specific cycle / seam / accumulation point. Not "drift could happen" but "after N cycles of surgical edit, the portrait's section headings have rotated through three formats with no operator notification — the integral is drifting away from the documented schema."
-2. **Why it succeeds** — cite the intent's longitudinal claim, the diff hunk (or live artifact excerpt) that pivots the finding, and the missing control that would have prevented it.
-3. **Severity** — critical / warning / suggestion per the ladder above.
-4. **Suggested defense** — one sentence. Often a calibration check ("add a per-N-cycle drift detector at <X>"), a seam contract ("merge the two prompts into a single source-of-truth at <Y>"), or a falsifiable claim revision ("rewrite the marketing claim at <Z> to match what the code can demonstrate").
+1. **Location** — `path/file.py:LN-LN` for the code seam, OR the live-artifact path (e.g. `~/.claude/essence/portrait.md`) for an observation-based finding. Quote the relevant excerpt.
 
-Sign each finding with your `tribunal-reviewer-temporal` keypair and append to `.tribunal/ledger.jsonl`. The full text of the finding goes to `.tribunal/findings/F-<id>.md`.
+2. **Concrete scenario** — one paragraph. The longitudinal property at risk + the specific cycle / seam / accumulation point. Not "drift could happen" but "after N cycles of surgical edit, the portrait's section headings have rotated through three formats with no operator notification — the integral is drifting away from the documented schema."
+
+3. **Manifesting cycle** — **REQUIRED.** The number of iterations / observations / writes / passes needed for the defect to become observable, plus the trigger that closes the loop. Be specific. Examples:
+   - "After ~20 PreCompact firings (≈ a week of typical use), the portrait section count exceeds the synthesizer's context budget; no warning, just silent truncation."
+   - "Each write to `observations.jsonl` appends; no rotation. At ~2GB the SessionStart hook's `tail -n 50` still works, but `analyze_portrait` reads the full file and OOMs."
+   - "The seam between `loam_observe` and `essence_synth` shares no schema contract. After one renames a field, the other silently drops that data on the next cycle."
+
+4. **Why it succeeds** — cite the intent's longitudinal claim, the diff hunk (or live artifact excerpt) that pivots the finding, and the missing control that would have prevented it.
+
+5. **What the operator observes when it fires** — one sentence. Truncated portrait section? Silent data loss? Cycle-N regression of a property the cycle-N-1 claim said was permanent? If "what they observe" is "nothing visible until they compare two snapshots", that's a `suggestion` with audit-tooling recommendation, not a `warning`.
+
+6. **Suggested defense** — one sentence. Often a calibration check ("add a per-N-cycle drift detector at <X>"), a seam contract ("merge the two prompts into a single source-of-truth at <Y>"), or a falsifiable claim revision ("rewrite the marketing claim at <Z> to match what the code can demonstrate").
+
+Sign each finding with your `tribunal-reviewer-temporal` keypair and append to `.tribunal/ledger.jsonl`. The six fields above are **required in every place a finding surfaces** — `.tribunal/findings/F-<id>.md` AND the lens summary report at `.tribunal/reports/<plan-id>/temporal-report.md`. Embed inline in the lens report with the trigger-cycle adjacent to the citation.
 
 ## Verdict
 

@@ -30,13 +30,35 @@ You are reviewer #3 of the Tribunal hybrid review's lens-parallel stage. Your si
 - **Warning**: N+1 in a path the plan flags as latency-sensitive, missing metric on a new endpoint, retry without backoff.
 - **Suggestion**: opportunity for batching, observability could be cleaner, doc gap on degraded behavior.
 
-## How to file findings
+## How to file findings — required fields (v0.5.8+)
 
-Same shape as other reviewers: concrete scenario, file:line citations, severity (conservative), one-sentence suggested defense.
+Each performance finding MUST include the seven fields below. The
+workload + numbers requirement is the **load-bearing one**: it lets downstream
+readers (especially open-source maintainers triaging an audit) distinguish a
+real production risk from a code-style preference. A perf finding without a
+concrete workload that triggers the degradation is unactionable.
 
-When the finding is about runtime behavior, **include reproduction or measurement evidence** when feasible: a benchmark, a profile snippet, a load-test scenario. "This is slow" without measurement is a suggestion at best.
+1. **Location** — `path/file.py:LN-LN` + the actual hunk (quote it).
 
-Sign with your `tribunal-reviewer-perf` keypair. Append to `.tribunal/ledger.jsonl`. Full text in `.tribunal/findings/F-<id>.md`.
+2. **Concrete defect** — one paragraph. What's slow / leaky / unbounded, and on which code path? Not "the function is inefficient" but "`pkg/cache.Set` rebuilds the entire LRU shadow on every write because `sortKeys()` runs O(N log N) on the full table."
+
+3. **Workload that triggers** — **REQUIRED.** Specific input shapes / call patterns / state that exhibit the degradation. Be numerical. Examples:
+   - "N = 10,000 cache entries; one `Set()` call takes ~140ms on the v0.4.0 default container (measured: `python -c 'import cache; bench(10000)'`)."
+   - "M = 50 concurrent MCP `transcribe_audio` calls each loading a different whisper model; resident memory reaches ~3GB before the kernel OOM-kills the container at ~37s wall."
+   - "Single PDF, 1200 pages, `analyze_pdf(mode='ocr', dpi=600)` allocates ~14GB of PIL images before the first page returns."
+   - "ollama daemon down, vision-mode FLIR sweep of 5 frames hangs 5min per frame on the default httpx connect-timeout (total: 25min before the caller times out)."
+
+4. **What blows up** — one sentence. Latency / memory / CPU / handle exhaustion / queue depth / connection pool starvation. Be specific about the resource. If "what blows up" is "nothing today, but could under future load", that's a **Suggestion**, not a Warning.
+
+5. **Observed or predicted numbers** — at least one of: a benchmark you ran (include the command), a profile excerpt, a measurement from a load test, or a defensible back-of-envelope estimate with stated assumptions. "This is slow" without numbers is downgraded to Suggestion.
+
+6. **Realistic preconditions** — what workload conditions make this fire? Production-typical input sizes? Edge cases users would actually hit? Adversarial / DOS scenarios? An ostensibly-Critical perf bug that requires unrealistic input shapes is a Suggestion in practice; say so.
+
+7. **Suggested defense** — one sentence. Name the specific code-level change. "Use `bisect.insort` instead of full re-sort at line 142" or "Hoist the model load out of the per-frame loop." Not "make it faster."
+
+Sign with your `tribunal-reviewer-perf` keypair. Append to `.tribunal/ledger.jsonl`. The seven fields above are **required in every place a finding surfaces** — the per-finding markdown at `.tribunal/findings/F-<id>.md`, the lens summary report at `.tribunal/reports/<plan-id>/perf-report.md`, and any cross-reviewer hand-off note. Maintainers triage from the lens reports; abbreviating there makes the finding look like a style preference.
+
+When the lens report is the primary surface (most agentic-flow runs), embed each finding inline using the seven-field structure verbatim. Keep workload + numbers adjacent to the citation so the reader can size the threat without context-switching.
 
 ## Verdict
 
