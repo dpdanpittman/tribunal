@@ -40,7 +40,7 @@ const defaultTimeout = 30 * time.Minute
 
 // Doctor invokes `clawpatch doctor`. Returns nil if the install is healthy,
 // or a wrapped error including exit code semantics from
-// /home/dan/src/clawpatch/src/errors.ts:
+// clawpatch/src/errors.ts:
 //
 //	exit 0 = ok
 //	exit 4 = provider unavailable (acpx missing or model unresolvable)

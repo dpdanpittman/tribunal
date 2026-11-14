@@ -182,12 +182,12 @@ The Suggestions (F-SEC-205, F-SEC-206, F-SEC-208) are defense-in-depth — track
 ## FINDINGS-TO-FILE
 
 ```
-Warning|availability|F-SEC-201|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-201|WaitForTx aborts on first transient error instead of polling through it
-Warning|documentation|F-SEC-202|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-202|Docstring claims a 300ms per-attempt timeout that does not exist in code
-Warning|trust-boundary|F-SEC-203|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-203|WaitForTx trusts LCD verdict; hostile LCD can fake inclusion or starve sync
-Warning|dos|F-SEC-204|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-204|Serial unbounded pre-flight queries let a slow LCD exhaust the sync ctx
-Suggestion|tls-posture|F-SEC-205|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-205|tcp to http normalization cements plaintext HTTP as default for documented onboarding
-Suggestion|input-validation|F-SEC-206|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-206|Sscanf parsing of outcome_reward_multiplier silently truncates trailing garbage
-Suggestion|unsafe-default|F-SEC-207|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-207|cmd/tribunal-seed has no production guard; typo can sign fake TP on mainnet
-Suggestion|input-validation|F-SEC-208|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-208|url.JoinPath with txhash collapses dotdot segments; validate hash shape
+Warning|availability|F-SEC-201|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-201|WaitForTx aborts on first transient error instead of polling through it
+Warning|documentation|F-SEC-202|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-202|Docstring claims a 300ms per-attempt timeout that does not exist in code
+Warning|trust-boundary|F-SEC-203|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-203|WaitForTx trusts LCD verdict; hostile LCD can fake inclusion or starve sync
+Warning|dos|F-SEC-204|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-204|Serial unbounded pre-flight queries let a slow LCD exhaust the sync ctx
+Suggestion|tls-posture|F-SEC-205|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-205|tcp to http normalization cements plaintext HTTP as default for documented onboarding
+Suggestion|input-validation|F-SEC-206|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-206|Sscanf parsing of outcome_reward_multiplier silently truncates trailing garbage
+Suggestion|unsafe-default|F-SEC-207|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-207|cmd/tribunal-seed has no production guard; typo can sign fake TP on mainnet
+Suggestion|input-validation|F-SEC-208|sha256:pending|file://.tribunal/reports/P-v032-audit/reviewer-sec.md#f-sec-208|url.JoinPath with txhash collapses dotdot segments; validate hash shape
 ```

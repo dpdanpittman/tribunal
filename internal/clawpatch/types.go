@@ -8,7 +8,7 @@
 //
 // The two systems communicate through clawpatch's on-disk JSON artifacts
 // under `.clawpatch/`. This package defines the Go mirrors of those
-// artifacts. See `/home/dan/src/clawpatch/src/types.ts` for the upstream
+// artifacts. See `clawpatch/src/types.ts` for the upstream
 // TypeScript shapes — fields here track that file.
 package clawpatch
 
@@ -69,7 +69,7 @@ type History struct {
 }
 
 // MapResult is the JSON payload returned by `clawpatch map --json`.
-// Mirrors the return value at /home/dan/src/clawpatch/src/app.ts:158-167.
+// Mirrors the return value at clawpatch/src/app.ts:158-167.
 type MapResult struct {
 	Features  int    `json:"features"`
 	New       int    `json:"new"`
@@ -81,7 +81,7 @@ type MapResult struct {
 }
 
 // ReviewResult is the JSON payload returned by `clawpatch review --json`.
-// Mirrors the return value at /home/dan/src/clawpatch/src/app.ts:291-299.
+// Mirrors the return value at clawpatch/src/app.ts:291-299.
 // Per-finding details live on disk; this is just the summary.
 type ReviewResult struct {
 	Run      string `json:"run"`      // runId

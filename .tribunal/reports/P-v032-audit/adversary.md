@@ -271,9 +271,9 @@ The methodology is doing its job: trio-parallel surfaced the obvious six, advers
 ## FINDINGS-TO-FILE
 
 ```
-critical|composition|F-NEW-301|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/adversary.md#f-new-301|Batch atomicity plus pre-flight false-negative causes single LCD blip to revert 100-commit settlement batch
-critical|refinement-mismatch|F-NEW-302|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/adversary.md#f-new-302|Execute returns non-nil BroadcastResult on WaitForTx error but every caller discards it losing the on-chain txhash
-warning|composition|F-NEW-303|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/adversary.md#f-new-303|SyncAll aborts on first plan failure and discards partial results so subsequent plans are silently un-synced
-warning|edge-case|F-NEW-304|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/adversary.md#f-new-304|SyncPlan deduplicates commits but not resolutions causing FindingAlreadyResolved batch revert on duplicate ledger entries
-warning|edge-case|F-NEW-305|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v032-audit/adversary.md#f-new-305|Poison-pill finding causes perpetual batch revert with no operator-facing skip affordance
+critical|composition|F-NEW-301|sha256:pending|file://.tribunal/reports/P-v032-audit/adversary.md#f-new-301|Batch atomicity plus pre-flight false-negative causes single LCD blip to revert 100-commit settlement batch
+critical|refinement-mismatch|F-NEW-302|sha256:pending|file://.tribunal/reports/P-v032-audit/adversary.md#f-new-302|Execute returns non-nil BroadcastResult on WaitForTx error but every caller discards it losing the on-chain txhash
+warning|composition|F-NEW-303|sha256:pending|file://.tribunal/reports/P-v032-audit/adversary.md#f-new-303|SyncAll aborts on first plan failure and discards partial results so subsequent plans are silently un-synced
+warning|edge-case|F-NEW-304|sha256:pending|file://.tribunal/reports/P-v032-audit/adversary.md#f-new-304|SyncPlan deduplicates commits but not resolutions causing FindingAlreadyResolved batch revert on duplicate ledger entries
+warning|edge-case|F-NEW-305|sha256:pending|file://.tribunal/reports/P-v032-audit/adversary.md#f-new-305|Poison-pill finding causes perpetual batch revert with no operator-facing skip affordance
 ```

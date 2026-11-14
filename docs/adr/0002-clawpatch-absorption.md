@@ -205,7 +205,7 @@ The spike landed in this repo:
 
 | File                                   | Purpose                                                                                                                            |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `internal/clawpatch/types.go`          | Go mirrors of clawpatch's `Finding`, `Evidence`, `MapResult`, `ReviewResult` (matches `/home/dan/src/clawpatch/src/types.ts:221+`) |
+| `internal/clawpatch/types.go`          | Go mirrors of clawpatch's `Finding`, `Evidence`, `MapResult`, `ReviewResult` (matches `clawpatch/src/types.ts:221+`) |
 | `internal/clawpatch/runner.go`         | Subprocess wrapper. `Doctor`, `Map`, `Review`, `ListFindings`                                                                      |
 | `internal/clawpatch/translate.go`      | `LensBucket`, `SeverityMap`, `CategoryMap`, `ToTribunalFinding`, `FormatLensReport`                                                |
 | `internal/clawpatch/translate_test.go` | Unit tests (lens bucketing, severity map, finding shape + signature verify)                                                        |

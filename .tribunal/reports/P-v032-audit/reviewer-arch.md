@@ -297,15 +297,15 @@ Specifically blocking on F-ARCH-201: the failure mode (silent loss of broadcast 
 ## FINDINGS-TO-FILE
 
 ```
-critical|architecture|F-ARCH-201|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/client.go#L129-L151|WaitForTx aborts on transient HTTP errors instead of polling until ctx done
-warning|architecture|F-ARCH-202|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/sync.go#L109-L117|SyncPlan pre-flight swallows ctx.Err() via continue, breaking idempotency under cancellation
-warning|architecture|F-ARCH-203|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/sync.go#L109-L125|Pre-flight is N serial REST round-trips; dominates latency at MAX_BATCH_SIZE
-warning|architecture|F-ARCH-204|<claim_hash_pending>|file:///home/dan/src/tribunal/cmd/tribunal/chain.go#L19-L27|normalizeRPCScheme lives in cmd/ not internal/chain/, so LoadConfig does not normalize on read
-warning|architecture|F-ARCH-205|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/config.go#L84-L86|applyDefaults overrides outcome_reward_multiplier=0 to 2, defeating T6 when contract has multiplier 0
-warning|architecture|F-ARCH-206|<claim_hash_pending>|file:///home/dan/src/tribunal/cmd/tribunal-seed/main.go#L23-L25|tribunal-seed argv parsing treats --send as plan ID, poisoning the ledger
-suggestion|architecture|F-ARCH-207|<claim_hash_pending>|file:///home/dan/src/tribunal/cmd/tribunal-seed/main.go#L105|tribunal-seed uses context.Background() for on-chain Execute against new wait-for-tx contract
-suggestion|architecture|F-ARCH-208|<claim_hash_pending>|file:///home/dan/src/tribunal/cmd/tribunal/chain.go#L76-L91|chain init calls chain.New(cfg) without validating cfg first
-suggestion|architecture|F-ARCH-209|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/config.go#L113-L129|Save does not call validate, so callers can persist a broken config
-suggestion|architecture|F-ARCH-210|<claim_hash_pending>|file:///home/dan/src/tribunal/internal/chain/client.go#L124-L128|WaitForTx docstring claims 300ms per-attempt timeout that is not enforced
-suggestion|architecture|F-ARCH-211|<claim_hash_pending>|file:///home/dan/src/tribunal/scripts/deploy-contract.sh#L166-L179|deploy-contract.sh still emits tcp:// in the paste-ready yaml block, regressing F3 when operator follows documented copy-paste flow
+critical|architecture|F-ARCH-201|<claim_hash_pending>|file://internal/chain/client.go#L129-L151|WaitForTx aborts on transient HTTP errors instead of polling until ctx done
+warning|architecture|F-ARCH-202|<claim_hash_pending>|file://internal/chain/sync.go#L109-L117|SyncPlan pre-flight swallows ctx.Err() via continue, breaking idempotency under cancellation
+warning|architecture|F-ARCH-203|<claim_hash_pending>|file://internal/chain/sync.go#L109-L125|Pre-flight is N serial REST round-trips; dominates latency at MAX_BATCH_SIZE
+warning|architecture|F-ARCH-204|<claim_hash_pending>|file://cmd/tribunal/chain.go#L19-L27|normalizeRPCScheme lives in cmd/ not internal/chain/, so LoadConfig does not normalize on read
+warning|architecture|F-ARCH-205|<claim_hash_pending>|file://internal/chain/config.go#L84-L86|applyDefaults overrides outcome_reward_multiplier=0 to 2, defeating T6 when contract has multiplier 0
+warning|architecture|F-ARCH-206|<claim_hash_pending>|file://cmd/tribunal-seed/main.go#L23-L25|tribunal-seed argv parsing treats --send as plan ID, poisoning the ledger
+suggestion|architecture|F-ARCH-207|<claim_hash_pending>|file://cmd/tribunal-seed/main.go#L105|tribunal-seed uses context.Background() for on-chain Execute against new wait-for-tx contract
+suggestion|architecture|F-ARCH-208|<claim_hash_pending>|file://cmd/tribunal/chain.go#L76-L91|chain init calls chain.New(cfg) without validating cfg first
+suggestion|architecture|F-ARCH-209|<claim_hash_pending>|file://internal/chain/config.go#L113-L129|Save does not call validate, so callers can persist a broken config
+suggestion|architecture|F-ARCH-210|<claim_hash_pending>|file://internal/chain/client.go#L124-L128|WaitForTx docstring claims 300ms per-attempt timeout that is not enforced
+suggestion|architecture|F-ARCH-211|<claim_hash_pending>|file://scripts/deploy-contract.sh#L166-L179|deploy-contract.sh still emits tcp:// in the paste-ready yaml block, regressing F3 when operator follows documented copy-paste flow
 ```

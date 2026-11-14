@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy tribunal-site to k8s worker (192.168.1.7).
+# Deploy tribunal-site to a Kubernetes node that builds and imports its own image.
 #
 # What it does:
 #   1. rsync site source to ~/tribunal-site on the worker (skip node_modules + dist)
@@ -9,8 +9,10 @@
 #   5. kubectl rollout restart so the new image lands
 #
 # Prereqs:
-#   - SSH access to claude@192.168.1.7 with sudo for ctr / containerd import
-#   - SSH access to claude@192.168.1.6 for kubectl
+#   - SSH access to the build node (REMOTE_USER@REMOTE_HOST) with sudo for ctr / containerd import
+#   - SSH access to a host that can run kubectl (KCTL_HOST)
+#
+# Set REMOTE_USER, REMOTE_HOST and KCTL_HOST in the environment before running.
 #
 # The image is built and stored on the worker node directly. There is no
 # registry round-trip — imagePullPolicy: Never plus the matching local image
@@ -18,11 +20,11 @@
 
 set -euo pipefail
 
-REMOTE_USER="zaphod-beeblebox"
-REMOTE_HOST="192.168.6.56"
+REMOTE_USER="${REMOTE_USER:?set REMOTE_USER (login on the build node)}"
+REMOTE_HOST="${REMOTE_HOST:?set REMOTE_HOST (the build node)}"
 REMOTE_DIR="/home/${REMOTE_USER}/tribunal-site"
 IMAGE_NAME="tribunal-site"
-KCTL_HOST="claude@192.168.1.6"
+KCTL_HOST="${KCTL_HOST:?set KCTL_HOST (user@host that can run kubectl)}"
 KCTL='sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,7 +60,7 @@ echo "==> service info"
 ssh "${KCTL_HOST}" "${KCTL} -n zaphod get svc tribunal-site"
 
 echo
-echo "==> done. Add this to /etc/caddy/Caddyfile on zaphod (192.168.6.56) if not already:"
+echo "==> done. Add this to /etc/caddy/Caddyfile on the reverse proxy host if not already:"
 echo
 echo "    tribunal.mabus.ai {"
 echo "        reverse_proxy CLUSTER_IP:80"

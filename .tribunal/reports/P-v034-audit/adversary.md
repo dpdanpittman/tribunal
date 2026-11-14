@@ -270,7 +270,7 @@ The same fix applies to the resolve-side log at lines 415-416.
 
 **Scenario:**
 
-`grep "^func Test" /home/dan/src/tribunal/internal/chain/sync_test.go` yields:
+`grep "^func Test" internal/chain/sync_test.go` yields:
 
 - `TestLooksLikeTestChain_TokenAware` — covers T5/T6.
 - `TestClient_Reputation_ParsesEnvelope` — covers query envelope parsing.
@@ -540,10 +540,10 @@ v0.3.4 ships after F-NEW-501 / F-SEC-401 is closed. If the close is Defense (a) 
 ## FINDINGS-TO-FILE
 
 ```
-critical|trust-boundary|F-NEW-501|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-501|Silent-suppression via hostile LCD exists on the success-path preflight not just recovery; attacker doesn't need to trigger Execute failure and the attack is observationally identical to a normal idempotent re-sync
-warning|refinement-mismatch|F-NEW-502|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-502|submitCommitBatch returns (nil, 0, nil) for legitimate empty-batch AND recovery-filter-to-empty AND hostile-suppression cases; SyncResult has no field to distinguish them
-warning|refinement-mismatch|F-NEW-503|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-503|Deletion of recovery regex removed per-finding-ID observability from the recovery log; v0.3.4 emits a count where v0.3.3 emitted specific finding IDs
-suggestion|test-debt|F-NEW-504|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-504|Zero unit-test coverage for the new structured-query recovery primitive — the load-bearing pivot of v0.3.4 ships untested; perf flagged in cross-reviewer notes but it fell in the inter-lens gap
-suggestion|architecture-meta|F-NEW-505|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-505|Methodology is converging on specific defect shapes but not on defect families; v0.3.5 must address the LCD-as-truth-oracle family architecturally (ABCI-proof reads) rather than patching another instance within it
-warning|composition|F-NEW-506|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/adversary.md#f-new-506|CLI's outer 5-minute ctx is unchanged from v0.3.2 but too tight for v0.3.4's per-plan 90s budget when N >= 4 plans; per-plan fairness invariant breaks at plan 4
+critical|trust-boundary|F-NEW-501|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-501|Silent-suppression via hostile LCD exists on the success-path preflight not just recovery; attacker doesn't need to trigger Execute failure and the attack is observationally identical to a normal idempotent re-sync
+warning|refinement-mismatch|F-NEW-502|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-502|submitCommitBatch returns (nil, 0, nil) for legitimate empty-batch AND recovery-filter-to-empty AND hostile-suppression cases; SyncResult has no field to distinguish them
+warning|refinement-mismatch|F-NEW-503|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-503|Deletion of recovery regex removed per-finding-ID observability from the recovery log; v0.3.4 emits a count where v0.3.3 emitted specific finding IDs
+suggestion|test-debt|F-NEW-504|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-504|Zero unit-test coverage for the new structured-query recovery primitive — the load-bearing pivot of v0.3.4 ships untested; perf flagged in cross-reviewer notes but it fell in the inter-lens gap
+suggestion|architecture-meta|F-NEW-505|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-505|Methodology is converging on specific defect shapes but not on defect families; v0.3.5 must address the LCD-as-truth-oracle family architecturally (ABCI-proof reads) rather than patching another instance within it
+warning|composition|F-NEW-506|sha256:pending|file://.tribunal/reports/P-v034-audit/adversary.md#f-new-506|CLI's outer 5-minute ctx is unchanged from v0.3.2 but too tight for v0.3.4's per-plan 90s budget when N >= 4 plans; per-plan fairness invariant breaks at plan 4
 ```

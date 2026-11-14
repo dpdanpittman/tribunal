@@ -53,7 +53,7 @@ Architecture and termination story are clean. The regex helpers, `regexp` import
 
 ### T2 — Regex helpers deleted + imports removed — **IMPLEMENTED**
 
-Verified via `grep -rn "regexp\|alreadyCommittedRE\|alreadyResolvedRE\|matchDuplicate" /home/dan/src/tribunal/internal/chain/` — no hits. `regexp` and `strings` no longer imported in `sync.go`. `internal/chain/client.go` still imports `strings` (used for `strings.HasPrefix`/`strings.Fields`/`strings.ToLower`) which is unrelated. Clean.
+Verified via `grep -rn "regexp\|alreadyCommittedRE\|alreadyResolvedRE\|matchDuplicate" internal/chain/` — no hits. `regexp` and `strings` no longer imported in `sync.go`. `internal/chain/client.go` still imports `strings` (used for `strings.HasPrefix`/`strings.Fields`/`strings.ToLower`) which is unrelated. Clean.
 
 ### T3 — Per-plan ctx isolation in `SyncAll` — **IMPLEMENTED**
 
@@ -393,13 +393,13 @@ CI: `go build ./...` clean, `go vet ./...` clean, `gofmt -l .` clean, `go test .
 ## FINDINGS-TO-FILE
 
 ```
-Critical|trust-boundary|F-SEC-401|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-401|Structured-query recovery trusts LCD as oracle for on-chain state; hostile LCD silently suppresses entire batch with FindingsSent=0 clean exit
-Warning|input-validation|F-SEC-402|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-402|preflight accepts any non-empty FindingResp as proof-of-commitment with no field-level validation against the query
-Suggestion|unsafe-default|F-SEC-403|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-403|preflight_concurrency has no sanity cap; future call sites without batch-size limit can be configured to saturate LCDs
-Suggestion|defense-in-depth|F-SEC-404|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-404|looksLikeTestChain duplicated across chain.Client and tribunal-seed; future drift between the two implementations is a structural risk
-Warning|tls-posture|F-SEC-205-carryfwd-v034|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-205-carryfwd-v034|tcp to http silent rewrite still fires on every LoadConfig; compounds with F-SEC-401 under MITM
-Suggestion|input-validation|F-SEC-208-carryfwd-v034|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-208-carryfwd-v034|txhash still not validated against hex-64 shape before path-joining
-Suggestion|input-validation|F-SEC-206-carryfwd-v034|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-206-carryfwd-v034|Sscanf parsing of outcome_reward_multiplier still truncates trailing garbage silently
-Suggestion|race-condition|F-SEC-304-carryfwd-v034|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-304-carryfwd-v034|Preflight ctx-cancel partial-result invariant still untested; surface area doubled in v0.3.4 by adding recovery-path call site
-Suggestion|trust-boundary|F-SEC-305-carryfwd-v034|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-305-carryfwd-v034|Execute broadcast-time error path still injectable via hostile RPC; coupled to F-SEC-401 as trigger for recovery path
+Critical|trust-boundary|F-SEC-401|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-401|Structured-query recovery trusts LCD as oracle for on-chain state; hostile LCD silently suppresses entire batch with FindingsSent=0 clean exit
+Warning|input-validation|F-SEC-402|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-402|preflight accepts any non-empty FindingResp as proof-of-commitment with no field-level validation against the query
+Suggestion|unsafe-default|F-SEC-403|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-403|preflight_concurrency has no sanity cap; future call sites without batch-size limit can be configured to saturate LCDs
+Suggestion|defense-in-depth|F-SEC-404|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-404|looksLikeTestChain duplicated across chain.Client and tribunal-seed; future drift between the two implementations is a structural risk
+Warning|tls-posture|F-SEC-205-carryfwd-v034|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-205-carryfwd-v034|tcp to http silent rewrite still fires on every LoadConfig; compounds with F-SEC-401 under MITM
+Suggestion|input-validation|F-SEC-208-carryfwd-v034|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-208-carryfwd-v034|txhash still not validated against hex-64 shape before path-joining
+Suggestion|input-validation|F-SEC-206-carryfwd-v034|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-206-carryfwd-v034|Sscanf parsing of outcome_reward_multiplier still truncates trailing garbage silently
+Suggestion|race-condition|F-SEC-304-carryfwd-v034|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-304-carryfwd-v034|Preflight ctx-cancel partial-result invariant still untested; surface area doubled in v0.3.4 by adding recovery-path call site
+Suggestion|trust-boundary|F-SEC-305-carryfwd-v034|sha256:pending|file://.tribunal/reports/P-v034-audit/reviewer-sec.md#f-sec-305-carryfwd-v034|Execute broadcast-time error path still injectable via hostile RPC; coupled to F-SEC-401 as trigger for recovery path
 ```

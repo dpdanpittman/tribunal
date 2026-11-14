@@ -430,7 +430,7 @@ create new ones" property intent.md asks for.
 ## FINDINGS-TO-FILE
 
 ```
-suggestion|performance|F-PERF-301|sha256:preflight-concurrency-not-tunable|file:///home/dan/src/tribunal/internal/chain/sync.go#L55-L58|Pre-flight worker cap is a private compile-time constant with no per-deployment override; high-RTT or local-LCD operators have no knob
-suggestion|performance|F-PERF-302|sha256:preflight-progress-missing-completion|file:///home/dan/src/tribunal/internal/chain/sync.go#L269-L283|Pre-flight progress note reports total ids but not in-flight/completed counts, so operator can't tell if the loop is wedged or making progress
-suggestion|performance|F-PERF-303|sha256:recovery-loop-resets-progress-clock|file:///home/dan/src/tribunal/internal/chain/sync.go#L316-L381|Recovery loop's per-attempt WaitForTx resets the progress clock; operator loses cumulative elapsed signal across a multi-retry recovery cycle
+suggestion|performance|F-PERF-301|sha256:preflight-concurrency-not-tunable|file://internal/chain/sync.go#L55-L58|Pre-flight worker cap is a private compile-time constant with no per-deployment override; high-RTT or local-LCD operators have no knob
+suggestion|performance|F-PERF-302|sha256:preflight-progress-missing-completion|file://internal/chain/sync.go#L269-L283|Pre-flight progress note reports total ids but not in-flight/completed counts, so operator can't tell if the loop is wedged or making progress
+suggestion|performance|F-PERF-303|sha256:recovery-loop-resets-progress-clock|file://internal/chain/sync.go#L316-L381|Recovery loop's per-attempt WaitForTx resets the progress clock; operator loses cumulative elapsed signal across a multi-retry recovery cycle
 ```

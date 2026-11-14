@@ -315,12 +315,12 @@ CI: `go build ./...` clean, `go vet ./...` clean, `go test ./...` all green. No 
 ## FINDINGS-TO-FILE
 
 ```
-Warning|trust-boundary|F-SEC-301|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-301|Recovery error-string parser is fed LCD-tainted stream; hostile LCD chooses which entry the operator drops from retry batch
-Warning|input-validation|F-SEC-302|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-302|matchDuplicate TrimRight strips characters the contract permits in finding_id, corrupting recovery for plausible IDs
-Warning|tls-posture|F-SEC-205-carryfwd|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-205-carried-forward|tcp to http normalization now silent on every LoadConfig escalates plaintext-default surface from v0.3.2
-Suggestion|input-validation|F-SEC-303|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-303|looksLikeTestChain substring containment lets mainnet ids containing test as substring bypass the prod guard
-Suggestion|race-condition|F-SEC-304|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-304|Preflight ctx-cancel partial-result path is correct but has no test covering invariants
-Suggestion|trust-boundary|F-SEC-305|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-305|Execute broadcast-time error path also injectable via hostile RPC node feeding regex-matchable raw_log
-Suggestion|input-validation|F-SEC-208-carryfwd|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-208-carried-forward|url.JoinPath txhash still not validated against hex-64 shape; carried from v0.3.2
-Suggestion|input-validation|F-SEC-206-carryfwd|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-206-carried-forward|Sscanf parsing of outcome_reward_multiplier still truncates trailing garbage silently; carried from v0.3.2
+Warning|trust-boundary|F-SEC-301|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-301|Recovery error-string parser is fed LCD-tainted stream; hostile LCD chooses which entry the operator drops from retry batch
+Warning|input-validation|F-SEC-302|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-302|matchDuplicate TrimRight strips characters the contract permits in finding_id, corrupting recovery for plausible IDs
+Warning|tls-posture|F-SEC-205-carryfwd|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-205-carried-forward|tcp to http normalization now silent on every LoadConfig escalates plaintext-default surface from v0.3.2
+Suggestion|input-validation|F-SEC-303|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-303|looksLikeTestChain substring containment lets mainnet ids containing test as substring bypass the prod guard
+Suggestion|race-condition|F-SEC-304|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-304|Preflight ctx-cancel partial-result path is correct but has no test covering invariants
+Suggestion|trust-boundary|F-SEC-305|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-305|Execute broadcast-time error path also injectable via hostile RPC node feeding regex-matchable raw_log
+Suggestion|input-validation|F-SEC-208-carryfwd|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-208-carried-forward|url.JoinPath txhash still not validated against hex-64 shape; carried from v0.3.2
+Suggestion|input-validation|F-SEC-206-carryfwd|sha256:pending|file://.tribunal/reports/P-v033-audit/reviewer-sec.md#f-sec-206-carried-forward|Sscanf parsing of outcome_reward_multiplier still truncates trailing garbage silently; carried from v0.3.2
 ```

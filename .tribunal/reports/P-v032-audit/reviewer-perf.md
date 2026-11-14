@@ -234,10 +234,10 @@ These don't need contract changes or v0.4-scope work. The fixes are: tolerate tr
 ## FINDINGS-TO-FILE
 
 ```
-warning|performance|F-PERF-201|sha256:waitfortx-transient-abort|file:///home/dan/src/tribunal/internal/chain/client.go#L129-L151|WaitForTx aborts the wait loop on the first transient LCD error, defeating F4's resilience goal
-suggestion|performance|F-PERF-202|sha256:waitfortx-doc-lie|file:///home/dan/src/tribunal/internal/chain/client.go#L123-L128|WaitForTx doc comment claims a 300ms per-attempt timeout that does not exist; actual per-attempt cap is the shared 30s http.Client.Timeout
-warning|performance|F-PERF-203|sha256:sync-preflight-serial|file:///home/dan/src/tribunal/internal/chain/sync.go#L109-L125|Sync pre-flight does N serial LCD round-trips with no parallelism, no batching, and no fast-path for empty/no-op plans
-warning|performance|F-PERF-204|sha256:wait-noobservability|file:///home/dan/src/tribunal/internal/chain/client.go#L129-L151|Wait loop and sync pre-flight are completely silent; operator sees a multi-minute hang with no progress signal
-suggestion|performance|F-PERF-205|sha256:seed-no-timeout|file:///home/dan/src/tribunal/cmd/tribunal-seed/main.go#L105|tribunal-seed --send uses context.Background() against the new wait loop and can hang forever on a misconfigured LCD
-suggestion|performance|F-PERF-206|sha256:waitfortx-1s-floor|file:///home/dan/src/tribunal/internal/chain/client.go#L129-L150|WaitForTx has a hard 1s floor before the first retry; happy-path Execute pays ~1s of avoidable latency on a fast-block chain
+warning|performance|F-PERF-201|sha256:waitfortx-transient-abort|file://internal/chain/client.go#L129-L151|WaitForTx aborts the wait loop on the first transient LCD error, defeating F4's resilience goal
+suggestion|performance|F-PERF-202|sha256:waitfortx-doc-lie|file://internal/chain/client.go#L123-L128|WaitForTx doc comment claims a 300ms per-attempt timeout that does not exist; actual per-attempt cap is the shared 30s http.Client.Timeout
+warning|performance|F-PERF-203|sha256:sync-preflight-serial|file://internal/chain/sync.go#L109-L125|Sync pre-flight does N serial LCD round-trips with no parallelism, no batching, and no fast-path for empty/no-op plans
+warning|performance|F-PERF-204|sha256:wait-noobservability|file://internal/chain/client.go#L129-L151|Wait loop and sync pre-flight are completely silent; operator sees a multi-minute hang with no progress signal
+suggestion|performance|F-PERF-205|sha256:seed-no-timeout|file://cmd/tribunal-seed/main.go#L105|tribunal-seed --send uses context.Background() against the new wait loop and can hang forever on a misconfigured LCD
+suggestion|performance|F-PERF-206|sha256:waitfortx-1s-floor|file://internal/chain/client.go#L129-L150|WaitForTx has a hard 1s floor before the first retry; happy-path Execute pays ~1s of avoidable latency on a fast-block chain
 ```

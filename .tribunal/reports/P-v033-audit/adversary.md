@@ -208,7 +208,7 @@ The methodology is buying real correctness — but it's not yet self-converging.
 ## FINDINGS-TO-FILE
 
 ```
-warning|composition|F-NEW-401|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/adversary.md#f-new-401|SyncAll's per-plan iterations share a single 5-minute ctx so a slow plan's recovery cycle starves subsequent plans of budget, defeating T7's continue-past-failure intent
-warning|edge-case|F-NEW-402|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/adversary.md#f-new-402|Recovery regex does not recognize BatchMixedPlanID errors so a per-entry plan_id drift between FindingCommit and batch wrapper renders the batch unrecoverable
-suggestion|architecture-meta|F-NEW-403|sha256:pending|file:///home/dan/src/tribunal/.tribunal/reports/P-v033-audit/adversary.md#f-new-403|Methodology is not converging on a fixed point; each audit cycle's regex-patch fix introduces a structurally-similar defect, recommend replacing parse-error-string primitive with contract-query primitive in v0.3.4
+warning|composition|F-NEW-401|sha256:pending|file://.tribunal/reports/P-v033-audit/adversary.md#f-new-401|SyncAll's per-plan iterations share a single 5-minute ctx so a slow plan's recovery cycle starves subsequent plans of budget, defeating T7's continue-past-failure intent
+warning|edge-case|F-NEW-402|sha256:pending|file://.tribunal/reports/P-v033-audit/adversary.md#f-new-402|Recovery regex does not recognize BatchMixedPlanID errors so a per-entry plan_id drift between FindingCommit and batch wrapper renders the batch unrecoverable
+suggestion|architecture-meta|F-NEW-403|sha256:pending|file://.tribunal/reports/P-v033-audit/adversary.md#f-new-403|Methodology is not converging on a fixed point; each audit cycle's regex-patch fix introduces a structurally-similar defect, recommend replacing parse-error-string primitive with contract-query primitive in v0.3.4
 ```

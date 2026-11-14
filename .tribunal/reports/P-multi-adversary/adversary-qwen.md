@@ -1,5 +1,5 @@
 <!--
-Adversary: qwen3-coder:latest (Alibaba) via ollama at 192.168.6.56:11434
+Adversary: qwen3-coder:latest (Alibaba) via a local Ollama server
 Date: 2026-05-18
 Model substitution note: the original P-multi-adversary intent specified
 qwen3:32b dense. We substituted qwen3-coder:latest (30B-A3B MoE) after
